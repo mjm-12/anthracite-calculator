@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuzz Face 動作点解析 (SPICE Model)</title>
+    <style>
+        /* ========================================
+           Tokyo Night Theme - Dark (Storm) & Light
+           ======================================== */
+
+        /* Dark Theme (Default) - Tokyo Night Storm */
+        :root,
+        [data-theme="dark"] {
+            --bg-dark: #1f2335;
+            --bg-main: #24283b;
+            --bg-highlight: #292e42;
+            --bg-visual: #364a82;
+            --fg-main: #c0caf5;
+            --fg-dark: #a9b1d6;
+            --fg-gutter: #3b4261;
+            --fg-comment: #565f89;
+            --border: #414868;
+            --blue: #7aa2f7;
+            --cyan: #7dcfff;
+            --green: #9ece6a;
+            --magenta: #bb9af7;
+            --orange: #ff9e64;
+            --red: #f7768e;
+            --yellow: #e0af68;
+            --teal: #73daca;
+            --shadow: rgba(0, 0, 0, 0.4);
+            --schematic-filter: invert(0.85) hue-rotate(180deg);
+        }
+
+        /* Light Theme - Tokyo Night Light */
+        [data-theme="light"] {
+            --bg-dark: #d5d6db;
+            --bg-main: #e9e9ed;
+            --bg-highlight: #f0f0f2;
+            --bg-visual: #b4c0e8;
+            --fg-main: #343b58;
+            --fg-dark: #4c505e;
+            --fg-gutter: #9699a3;
+            --fg-comment: #7c7f8a;
+            --border: #c4c8da;
+            --blue: #34548a;
+            --cyan: #0f4b6e;
+            --green: #485e30;
+            --magenta: #5a4a78;
+            --orange: #965027;
+            --red: #8c4351;
+            --yellow: #8f5e15;
+            --teal: #33635c;
+            --shadow: rgba(0, 0, 0, 0.12);
+            --schematic-filter: none;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 10px;
+            background-color: var(--bg-dark);
+            color: var(--fg-main);
+        }
+
+        h1 {
+            color: var(--blue);
+            text-align: center;
+            border-bottom: 2px solid var(--magenta);
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+            margin-top: 10px;
+        }
+
+        h2 {
+            color: var(--cyan);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+            margin-top: 15px;
+            font-size: 1.1rem;
+        }
+
+        h3 {
+            color: var(--fg-dark);
+        }
+
+        /* 2-column Layout Grid */
+        .container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            background-color: transparent;
+        }
+
+        @media (min-width: 900px) {
+            .container {
+                grid-template-columns: 1fr 1fr;
+                align-items: start;
+            }
+        }
+
+        .panel {
+            background-color: var(--bg-main);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        /* Input Styles */
+        .input-section {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: var(--bg-highlight);
+            border-radius: 5px;
+            border: 1px solid var(--border);
+        }
+
+        .input-group {
+            margin: 5px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        label {
+            width: 140px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: var(--fg-dark);
+        }
+
+        input[type="text"],
+        input[type="number"] {
+            flex: 1;
+            padding: 6px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: monospace;
+            background-color: var(--bg-dark);
+            color: var(--green);
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--blue);
+            box-shadow: 0 0 0 2px rgba(122, 162, 247, 0.3);
+        }
+
+        select {
+            background-color: var(--bg-dark);
+            color: var(--green);
+            border: 1px solid var(--border);
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--blue);
+        }
+
+        textarea {
+            width: 100%;
+            height: 60px;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: monospace;
+            resize: vertical;
+            box-sizing: border-box;
+            background-color: var(--bg-dark);
+            color: var(--fg-comment);
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--blue);
+            box-shadow: 0 0 0 2px rgba(122, 162, 247, 0.3);
+        }
+
+        .unit {
+            margin-left: 10px;
+            color: var(--fg-comment);
+            width: 40px;
+            font-size: 0.9rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background: linear-gradient(135deg, var(--blue), var(--magenta));
+            color: var(--bg-dark);
+            border: none;
+            border-radius: 4px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, var(--cyan), var(--blue));
+            box-shadow: 0 4px 15px rgba(122, 162, 247, 0.4);
+            transform: translateY(-1px);
+        }
+
+        /* Result & Image Styles */
+        .schematic-container {
+            text-align: center;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: var(--bg-highlight);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .schematic-img {
+            max-width: 100%;
+            height: auto;
+            max-height: 250px;
+            filter: var(--schematic-filter);
+        }
+
+        .results {
+            margin-top: 10px;
+            padding: 15px;
+            background-color: var(--bg-highlight);
+            border-radius: 5px;
+            display: block;
+            border: 1px solid var(--border);
+        }
+
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 5px;
+            font-size: 0.9rem;
+        }
+
+        .result-table th,
+        .result-table td {
+            text-align: left;
+            padding: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .result-table th {
+            background-color: var(--bg-visual);
+            color: var(--fg-main);
+        }
+
+        .result-val {
+            font-weight: bold;
+            color: var(--green);
+            font-size: 1.1rem;
+        }
+
+        .error-msg {
+            color: var(--red);
+            background-color: rgba(247, 118, 142, 0.15);
+            border: 1px solid var(--red);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        /* Helper comment text */
+        .help-text {
+            font-size: 0.8rem;
+            color: var(--fg-comment);
+            margin-bottom: 3px;
+            display: block;
+        }
+
+        /* Make SPICE headers slightly smaller to save space */
+        .spice-header {
+            margin-top: 0;
+            margin-bottom: 5px;
+            font-size: 0.95rem;
+            color: var(--fg-dark);
+            border-bottom: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .toggle-btn {
+            font-size: 0.75rem;
+            color: var(--orange);
+            cursor: pointer;
+            text-decoration: underline;
+            background: none;
+            border: none;
+            padding: 0;
+            font-weight: normal;
+            width: auto;
+            margin-top: 0;
+        }
+
+        .toggle-btn:hover {
+            color: var(--yellow);
+            background: none;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Initial state placeholder */
+        #initial-state {
+            color: var(--fg-comment);
+        }
+
+        /* Theme Toggle Switch - Obsidian Style */
+        .theme-switch-wrapper {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 1000;
+        }
+
+        .theme-switch {
+            position: relative;
+            width: 42px;
+            height: 24px;
+            background: var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            border: none;
+            padding: 0;
+        }
+
+        .theme-switch:hover {
+            background: var(--fg-comment);
+        }
+
+        .theme-switch .knob {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            background: var(--bg-main);
+            border-radius: 50%;
+            transition: transform 0.3s ease, background 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        [data-theme="dark"] .theme-switch .knob {
+            transform: translateX(18px);
+        }
+
+        .theme-icon {
+            font-size: 16px;
+            color: var(--fg-comment);
+            transition: color 0.3s ease;
+            line-height: 1;
+        }
+
+        .theme-icon:hover {
+            color: var(--fg-main);
+        }
+
+        /* Smooth theme transition */
+        body,
+        .panel,
+        .input-section,
+        .results,
+        input,
+        textarea,
+        select,
+        button,
+        .schematic-container {
+            transition: background-color 0.3s ease,
+                color 0.3s ease,
+                border-color 0.3s ease,
+                box-shadow 0.3s ease;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Theme Toggle Switch -->
+    <div class="theme-switch-wrapper">
+        <button class="theme-switch" onclick="toggleTheme()" title="テーマ切替 / Toggle Theme">
+            <span class="knob"></span>
+        </button>
+        <span class="theme-icon" id="theme-icon">☀</span>
+    </div>
+
+    <h1>Fuzz Face 動作点解析</h1>
+
+    <div class="container">
+        <!-- LEFT PANEL (Original Right): Schematic & Results -->
+        <div class="panel">
+            <div class="schematic-container">
+                <img src="FuzzFace-Classic.svg" alt="Fuzz Face Schematic" class="schematic-img">
+            </div>
+
+            <div class="results" id="results" style="display:none;">
+                <h2>計算結果 (Bias Resistors)</h2>
+                <table class="result-table">
+                    <tr>
+                        <th style="width: 20%">Ref</th>
+                        <th style="width: 40%">Calculated</th>
+                        <th style="width: 40%">Approx (E24)</th>
+                    </tr>
+                    <tr>
+                        <td><strong>R1</strong></td>
+                        <td id="res_R1" class="result-val">-</td>
+                        <td id="e24_R1">-</td>
+                    </tr>
+                    <tr>
+                        <td><strong>R2</strong></td>
+                        <td id="res_R2" class="result-val">-</td>
+                        <td id="e24_R2">-</td>
+                    </tr>
+                    <tr>
+                        <td><strong>R3</strong></td>
+                        <td id="res_R3" class="result-val">-</td>
+                        <td id="e24_R3">-</td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top: 15px;">各点電圧 (Node Voltages)</h2>
+                <table class="result-table">
+                    <tr>
+                        <td>V<sub>C1</sub></td>
+                        <td id="val_VC1" class="result-val">-</td>
+                        <td>V<sub>C2</sub></td>
+                        <td id="val_VC2" class="result-val">-</td>
+                    </tr>
+                    <tr>
+                        <td>V<sub>B1</sub></td>
+                        <td id="val_VB1" class="result-val">-</td>
+                        <td>V<sub>E2</sub></td>
+                        <td id="val_VE2" class="result-val">-</td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top: 15px;">動作点 (Operating Point)</h2>
+                <table class="result-table">
+                    <tr>
+                        <th>Param</th>
+                        <th>Q1 (I<sub>C1</sub>)</th>
+                        <th>Q2 (I<sub>C2</sub>)</th>
+                    </tr>
+                    <tr>
+                        <td>V<sub>BE</sub></td>
+                        <td id="mon_Vbe1">-</td>
+                        <td id="mon_Vbe2">-</td>
+                    </tr>
+                    <tr>
+                        <td>h<sub>FE</sub></td>
+                        <td id="mon_hfe1">-</td>
+                        <td id="mon_hfe2">-</td>
+                    </tr>
+                    <tr>
+                        <td>I<sub>B</sub></td>
+                        <td id="mon_Ib1">-</td>
+                        <td id="mon_Ib2">-</td>
+                    </tr>
+                    <tr>
+                        <td>r<sub>ie</sub></td>
+                        <td id="mon_rie1">-</td>
+                        <td id="mon_rie2">-</td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top: 15px;">交流解析 (AC Analysis)</h2>
+                <table class="result-table">
+                    <tr>
+                        <td>R<sub>E</sub> (RV1∥R3)</td>
+                        <td id="val_RE" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr>
+                        <td>R<sub>C</sub> (R2∥RV2)</td>
+                        <td id="val_RC" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr>
+                        <td>電圧利得 A<sub>v</sub></td>
+                        <td id="val_Av" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr>
+                        <td>入力インピーダンス Z<sub>in</sub></td>
+                        <td id="val_Zin" class="result-val" colspan="3">-</td>
+                    </tr>
+                </table>
+            </div>
+            <!-- Initial placeholder state -->
+            <div id="initial-state" style="text-align: center; color: #888; padding: 40px;">
+                <p>右側のパラメータを入力し、「計算実行」ボタンを押してください。</p>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL (Original Left): Calculation Inputs -->
+        <div class="panel">
+            <h2>回路パラメータ & SPICEモデル</h2>
+
+            <div class="input-section">
+                <h3 class="spice-header">共通設定</h3>
+                <div class="input-group">
+                    <label>V<sub>CC</sub>:</label>
+                    <input type="text" id="vcc" value="9">
+                    <span class="unit">V</span>
+                </div>
+                <div class="input-group">
+                    <label>R<sub>F</sub> (帰還抵抗):</label>
+                    <input type="text" id="rf" value="100k">
+                    <span class="unit">Ω</span>
+                </div>
+                <div class="input-group">
+                    <label>I<sub>C1</sub> (目標):</label>
+                    <input type="text" id="ic1" value="50u">
+                    <span class="unit">A</span>
+                </div>
+                <div class="input-group">
+                    <label>I<sub>C2</sub> (目標):</label>
+                    <input type="text" id="ic2" value="500u">
+                    <span class="unit">A</span>
+                </div>
+                <div class="input-group">
+                    <label>V<sub>T</sub> (熱電圧):</label>
+                    <input type="text" id="vt" value="25.85m">
+                    <span class="unit">V</span>
+                </div>
+                <div class="input-group">
+                    <label>RV<sub>1</sub> (Fuzz Pot):</label>
+                    <select id="rv1"
+                        style="flex:1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                        <option value="0.1">0.1Ω</option>
+                        <option value="1" selected>1Ω</option>
+                        <option value="10">10Ω</option>
+                        <option value="100">100Ω</option>
+                        <option value="1k">1kΩ</option>
+                        <option value="10k">10kΩ</option>
+                    </select>
+                    <span class="unit"></span>
+                </div>
+                <div class="input-group">
+                    <label>RV<sub>2</sub> (Vol Pot):</label>
+                    <select id="rv2"
+                        style="flex:1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                        <option value="100k">100kΩ</option>
+                        <option value="250k">250kΩ</option>
+                        <option value="500k" selected>500kΩ</option>
+                        <option value="1M">1MΩ</option>
+                        <option value="Infinity">∞ (Open)</option>
+                    </select>
+                    <span class="unit"></span>
+                </div>
+            </div>
+
+            <div class="input-section">
+                <h3 class="spice-header">
+                    Q1 Parameters
+                    <button class="toggle-btn" onclick="toggleMode('q1')">各パラメータを直接入力する</button>
+                </h3>
+
+                <!-- Text Mode -->
+                <div id="q1-mode-text">
+                    <span class="help-text">Paste .MODEL string here</span>
+                    <textarea id="q1-model"
+                        spellcheck="false">.MODEL 2SC8888-W NPN(IS=25.44f BF=380.43 NF=1.002 VAF=125.5 IKF=385m ISE=4.88f NE=1.35 BR=8.22 NR=1.01 VAR=18.5 IKR=180m ISC=32.5f NC=1.25 RB=12.8 IRB=50u RBM=2 RE=185m RC=880m CJE=15.32p VJE=0.75 MJE=0.34 CJC=5.12p VJC=0.55 MJC=0.32 FC=0.5 TF=445p XTF=8 VTF=12 ITF=300m TR=65n EG=1.11 XTI=3 XTB=1.5 Vceo=60 Icrating=150m mfg=virtual-transistor)</textarea>
+                </div>
+
+                <!-- Manual Mode -->
+                <div id="q1-mode-manual" class="hidden">
+                    <span class="help-text">Enter parameters manually</span>
+                    <div class="input-group">
+                        <label>Is:</label>
+                        <input type="text" id="q1-is" value="25.44f">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Bf:</label>
+                        <input type="text" id="q1-bf" value="380.43">
+                        <span class="unit">-</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Ise:</label>
+                        <input type="text" id="q1-ise" value="4.88f">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Ne:</label>
+                        <input type="text" id="q1-ne" value="1.35">
+                        <span class="unit">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-section">
+                <h3 class="spice-header">
+                    Q2 Parameters
+                    <button class="toggle-btn" onclick="toggleMode('q2')">各パラメータを直接入力する</button>
+                </h3>
+
+                <!-- Text Mode -->
+                <div id="q2-mode-text">
+                    <span class="help-text">Paste .MODEL string here</span>
+                    <textarea id="q2-model"
+                        spellcheck="false">.MODEL 2SC8888-W NPN(IS=25.44f BF=380.43 NF=1.002 VAF=125.5 IKF=385m ISE=4.88f NE=1.35 BR=8.22 NR=1.01 VAR=18.5 IKR=180m ISC=32.5f NC=1.25 RB=12.8 IRB=50u RBM=2 RE=185m RC=880m CJE=15.32p VJE=0.75 MJE=0.34 CJC=5.12p VJC=0.55 MJC=0.32 FC=0.5 TF=445p XTF=8 VTF=12 ITF=300m TR=65n EG=1.11 XTI=3 XTB=1.5 Vceo=60 Icrating=150m mfg=virtual-transistor)</textarea>
+                </div>
+
+                <!-- Manual Mode -->
+                <div id="q2-mode-manual" class="hidden">
+                    <span class="help-text">Enter parameters manually</span>
+                    <div class="input-group">
+                        <label>Is:</label>
+                        <input type="text" id="q2-is" value="25.44f">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Bf:</label>
+                        <input type="text" id="q2-bf" value="380.43">
+                        <span class="unit">-</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Ise:</label>
+                        <input type="text" id="q2-ise" value="4.88f">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Ne:</label>
+                        <input type="text" id="q2-ne" value="1.35">
+                        <span class="unit">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="calculate()">計算実行 (Calculate)</button>
+            <div id="error-box" class="error-msg"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- Theme Toggle ---
+        function initTheme() {
+            const savedTheme = localStorage.getItem('fuzzface-theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+            setTheme(theme);
+        }
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            const icon = document.getElementById('theme-icon');
+            if (icon) {
+                icon.textContent = theme === 'dark' ? '☽' : '☀';
+            }
+            localStorage.setItem('fuzzface-theme', theme);
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            const newTheme = current === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+        }
+
+        // Initialize theme on page load
+        initTheme();
+
+        // --- ユーティリティ ---
+        function parseEngineering(str) {
+            if (!str) return 0;
+            if (str === "Infinity") return Infinity;
+            str = str.toString().trim();
+
+            // SPICE engineering notation suffixes
+            // Check for 'meg' first (case-insensitive) for Mega
+            const megMatch = str.match(/^([0-9.\-+eE]+)\s*(meg|MEG|Meg)$/i);
+            if (megMatch) {
+                return parseFloat(megMatch[1]) * 1e6;
+            }
+
+            // Check for single character suffix
+            const suffixMatch = str.match(/^([0-9.\-+eE]+)\s*([a-zA-Z])$/);
+            if (suffixMatch) {
+                const num = parseFloat(suffixMatch[1]);
+                const suffix = suffixMatch[2];
+
+                // SPICE standard multipliers
+                // Note: In SPICE, 'm' is milli, 'M' is also milli (use 'meg' for mega)
+                // But for user convenience, we treat uppercase 'M' as Mega
+                const multipliers = {
+                    'f': 1e-15, 'F': 1e-15,  // femto
+                    'p': 1e-12, 'P': 1e-12,  // pico
+                    'n': 1e-9, 'N': 1e-9,   // nano
+                    'u': 1e-6, 'U': 1e-6,   // micro
+                    'm': 1e-3,               // milli (lowercase only for SPICE compat)
+                    'M': 1e6, 'Meg': 1e6,    // Mega (uppercase for user convenience)
+                    'k': 1e3, 'K': 1e3,    // kilo
+                    'g': 1e9, 'G': 1e9,    // giga
+                    't': 1e12, 'T': 1e12    // tera
+                };
+
+                if (multipliers.hasOwnProperty(suffix)) {
+                    return num * multipliers[suffix];
+                }
+            }
+
+            // No suffix or unrecognized - parse as plain number
+            return parseFloat(str);
+        }
+
+        const E24 = [1.0, 1.1, 1.2, 1.3, 1.5, 1.6, 1.8, 2.0, 2.2, 2.4, 2.7, 3.0, 3.3, 3.6, 3.9, 4.3, 4.7, 5.1, 5.6, 6.2, 6.8, 7.5, 8.2, 9.1];
+
+        function findClosestE24(val) {
+            if (val <= 0 || !isFinite(val)) return "-";
+            const exponent = Math.floor(Math.log10(val));
+            const mantissa = val / Math.pow(10, exponent);
+
+            let closest = E24[0];
+            let minDiff = Math.abs(mantissa - E24[0]);
+
+            for (let e of E24) {
+                let diff = Math.abs(mantissa - e);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = e;
+                }
+            }
+            const res = closest * Math.pow(10, exponent);
+            return formatResistor(res);
+        }
+
+        function formatResistor(val) {
+            if (val >= 1e6) return (val / 1e6).toPrecision(3) + " MΩ";
+            if (val >= 1e3) return (val / 1e3).toPrecision(3) + " kΩ";
+            return val.toPrecision(3) + " Ω";
+        }
+
+        // --- SPICE Parser & Data Gathering ---
+        function parseSpiceModel(modelStr) {
+            const params = {
+                Is: 1e-16,
+                Bf: 100,
+                Ise: 0,
+                Ne: 1.5,
+                Nf: 1.0,     // Forward emission coefficient
+                Rb: 0,       // Zero-bias base resistance
+                Re: 0,       // Emitter resistance
+            };
+
+            if (!modelStr) return params;
+
+            const patterns = {
+                // Pattern supports: scientific notation (1E-15), SPICE suffixes (7.049f, 59.74p)
+                // Suffixes: f=femto, p=pico, n=nano, u=micro, m=milli, k=kilo, meg=mega, g=giga, t=tera
+                Is: /Is\s*=\s*([0-9\.\+\-eE]+(?:meg|[fpnumkgt])?)/i,
+                Bf: /Bf\s*=\s*([0-9\.\+\-eE]+(?:meg|[fpnumkgt])?)/i,
+                Ise: /Ise\s*=\s*([0-9\.\+\-eE]+(?:meg|[fpnumkgt])?)/i,
+                Ne: /Ne\s*=\s*([0-9\.\+\-eE]+(?:meg|[fpnumkgt])?)/i,
+                Nf: /Nf\s*=\s*([0-9\.\+\-eE]+(?:meg|[fpnumkgt])?)/i,
+                Rb: /Rb\s*=\s*([0-9\.\+\-eE]+(?:meg|[fpnumkgt])?)/i,
+                Re: /Re\s*=\s*([0-9\.\+\-eE]+(?:meg|[fpnumkgt])?)/i,
+            };
+
+            for (const [key, regex] of Object.entries(patterns)) {
+                const match = modelStr.match(regex);
+                if (match && match[1]) {
+                    let valStr = match[1];
+                    params[key] = parseEngineering(valStr);
+                }
+            }
+            return params;
+        }
+
+        // Toggle visibility active
+        const modes = {
+            q1: 'text', // 'text' or 'manual'
+            q2: 'text'
+        };
+
+        function toggleMode(id) {
+            const textDiv = document.getElementById(id + '-mode-text');
+            const manualDiv = document.getElementById(id + '-mode-manual');
+            const btn = document.querySelector(`button[onclick="toggleMode('${id}')"]`);
+
+            if (modes[id] === 'text') {
+                modes[id] = 'manual';
+                textDiv.classList.add('hidden');
+                manualDiv.classList.remove('hidden');
+                btn.textContent = "SPICEモデル(文字列)入力に戻す";
+            } else {
+                modes[id] = 'text';
+                textDiv.classList.remove('hidden');
+                manualDiv.classList.add('hidden');
+                btn.textContent = "各パラメータを直接入力する";
+            }
+        }
+
+        function getTransistorParams(id) {
+            if (modes[id] === 'text') {
+                const modelStr = document.getElementById(id + '-model').value;
+                return parseSpiceModel(modelStr);
+            } else {
+                return {
+                    Is: parseEngineering(document.getElementById(id + '-is').value),
+                    Bf: parseEngineering(document.getElementById(id + '-bf').value),
+                    Ise: parseEngineering(document.getElementById(id + '-ise').value),
+                    Ne: parseEngineering(document.getElementById(id + '-ne').value),
+                    Nf: 1.0,   // Default for manual mode
+                    Rb: 0,     // Default for manual mode
+                    Re: 0,     // Default for manual mode
+                };
+            }
+        }
+
+        // --- 計算ロジック ---
+        function calculateIb(Ic, p, Vt) {
+            const Vbe = Vt * Math.log(Ic / p.Is);
+            const term1 = Math.exp(Vbe / Vt);
+            const term2 = Math.exp(Vbe / (p.Ne * Vt));
+
+            const Ib_ideal = (p.Is / p.Bf) * (term1 - 1);
+            const Ib_leak = p.Ise * (term2 - 1);
+            const Ib = Ib_ideal + Ib_leak;
+            const beta_eff = Ic / Ib;
+
+            // r_ie calculation (from memo):
+            // r_ie = RB + β_eff * NF * V_T / I_C + (1 + β_eff) * RE
+            const rie = p.Rb + (beta_eff * p.Nf * Vt / Ic) + (1 + beta_eff) * p.Re;
+
+            return {
+                Ib: Ib,
+                Vbe: Vbe,
+                hfe: beta_eff,
+                rie: rie
+            };
+        }
+
+        function calculate() {
+            try {
+                document.getElementById('error-box').style.display = 'none';
+
+                const Vcc = parseEngineering(document.getElementById('vcc').value);
+                const Rf = parseEngineering(document.getElementById('rf').value);
+                const Ic1 = parseEngineering(document.getElementById('ic1').value);
+                const Ic2 = parseEngineering(document.getElementById('ic2').value);
+                const Vt = parseEngineering(document.getElementById('vt').value);
+                const Rv2 = parseEngineering(document.getElementById('rv2').value);
+
+                const q1Params = getTransistorParams('q1');
+                const q2Params = getTransistorParams('q2');
+
+                const Q1 = calculateIb(Ic1, q1Params, Vt);
+                const Q2 = calculateIb(Ic2, q2Params, Vt);
+
+                // --- R3の計算 ---
+                // If = Ib1 (Rfを通る電流 = Q1のベース電流)
+                // I3 = Ie2 - If = (Ic2 + Ib2) - Ib1
+                // KVL: Ve2 = Vbe1 + If*Rf = I3*R3
+                const If = Q1.Ib;
+                const I3 = (Ic2 + Q2.Ib) - If;
+                const R3 = (Q1.Vbe + (If * Rf)) / I3;
+                const Ve2 = I3 * R3;
+
+                // --- R1の計算 ---
+                // Vc1 = Ve2 + Vbe2 (Q1のコレクタ = Q2のベース)
+                // I1 = Ic1 + Ib2 (R1を流れる電流)
+                const Vc1 = Ve2 + Q2.Vbe;
+                const I1 = Ic1 + Q2.Ib;
+                const R1 = (Vcc - Vc1) / I1;
+
+                // --- R2の計算 (2次方程式) ---
+                // Volume pot回路から導出される2次方程式:
+                // A*R2^2 + B*R2 + C = 0
+                // A = Ic2/Rv2, B = 2*Ic2 - V_avail/Rv2, C = -V_avail
+                // (V_avail = Vcc - Ve2)
+                let R2_phys;
+                if (Rv2 === Infinity || Rv2 <= 0) {
+                    // Rv2が無限大(オープン)の場合、単純な計算
+                    // Vc2 = Vcc/2 を目標とすると R2 = Vcc/(2*Ic2)
+                    R2_phys = (Vcc - Ve2) / (2 * Ic2);
+                } else {
+                    const V_avail = Vcc - Ve2;
+                    const A = Ic2 / Rv2;
+                    const B = 2 * Ic2 - V_avail / Rv2;
+                    const C = -V_avail;
+                    const discriminant = B * B - 4 * A * C;
+
+                    if (discriminant < 0) {
+                        R2_phys = -1; // 解なし
+                    } else {
+                        R2_phys = (-B + Math.sqrt(discriminant)) / (2 * A);
+                    }
+                }
+
+                document.getElementById('res_R1').innerText = formatResistor(R1);
+
+                if (R2_phys > 0) {
+                    document.getElementById('res_R2').innerText = formatResistor(R2_phys);
+                    document.getElementById('e24_R2').innerText = findClosestE24(R2_phys);
+                } else {
+                    document.getElementById('res_R2').innerText = "Impossible (Req > RV2)";
+                    document.getElementById('e24_R2').innerText = "-";
+                }
+
+                document.getElementById('res_R3').innerText = formatResistor(R3);
+
+                document.getElementById('e24_R1').innerText = findClosestE24(R1);
+                // e24_R2 handled above
+                document.getElementById('e24_R3').innerText = findClosestE24(R3);
+
+                // --- Node Voltage Calculations ---
+                // VB1 ≈ 0V (入力はGNDにバイアスされていると仮定)
+                // 実際にはVbe1がQ1のベース-エミッタ電圧
+                const VB1 = Q1.Vbe;
+
+                // VC1 = Ve2 + Vbe2 (既に上で計算済み)
+                // または VC1 = Vcc - R1 * I1 = Vcc - R1 * (Ic1 + Ib2)
+                const VC1_display = Vc1;
+
+                // VE2 = I3 * R3 (既に上で計算済み)
+                const VE2 = Ve2;
+
+                // VC2 = Vcc - R2 * Ic2
+                let VC2 = 0;
+                if (R2_phys > 0) {
+                    VC2 = Vcc - (R2_phys * Ic2);
+                } else {
+                    VC2 = NaN;
+                }
+
+                document.getElementById('val_VB1').innerText = VB1.toFixed(3) + " V";
+                document.getElementById('val_VC1').innerText = VC1_display.toFixed(3) + " V";
+                document.getElementById('val_VE2').innerText = VE2.toFixed(3) + " V";
+                document.getElementById('val_VC2').innerText = isNaN(VC2) ? "-" : VC2.toFixed(3) + " V";
+
+                document.getElementById('mon_Vbe1').innerText = Q1.Vbe.toFixed(4) + " V";
+                document.getElementById('mon_Vbe2').innerText = Q2.Vbe.toFixed(4) + " V";
+                document.getElementById('mon_hfe1').innerText = Q1.hfe.toFixed(1);
+                document.getElementById('mon_hfe2').innerText = Q2.hfe.toFixed(1);
+                document.getElementById('mon_Ib1').innerText = (Q1.Ib * 1e6).toFixed(2) + " µA";
+                document.getElementById('mon_Ib2').innerText = (Q2.Ib * 1e6).toFixed(2) + " µA";
+                document.getElementById('mon_rie1').innerText = formatResistor(Q1.rie);
+                document.getElementById('mon_rie2').innerText = formatResistor(Q2.rie);
+
+                // --- AC Analysis ---
+                // Read RV1 value
+                const Rv1 = parseEngineering(document.getElementById('rv1').value);
+
+                // R_E = RV1 || R3
+                const R_E = (Rv1 * R3) / (Rv1 + R3);
+
+                // R_C = R2 || RV2
+                let R_C;
+                if (Rv2 === Infinity || Rv2 <= 0) {
+                    R_C = R2_phys;
+                } else if (R2_phys > 0) {
+                    R_C = (R2_phys * Rv2) / (R2_phys + Rv2);
+                } else {
+                    R_C = NaN;
+                }
+
+                // Using calculated r_ie values
+                const rie1 = Q1.rie;
+                const rie2 = Q2.rie;
+                const hfe1 = Q1.hfe;
+                const hfe2 = Q2.hfe;
+
+                // Gain formula from memo (equation 11):
+                // A = R_C * h_fe2 * [R1 * h_fe1 * (R_F + R_E) + R_E * r_ie1] / 
+                //     (r_ie1 * [(R1 + r_ie2)(R_F + R_E) + R_E * R_F * (1 + h_fe2)])
+                const numerator = R_C * hfe2 * (R1 * hfe1 * (Rf + R_E) + R_E * rie1);
+                const Delta_denom = (R1 + rie2) * (Rf + R_E) + R_E * Rf * (1 + hfe2);
+                const Av = numerator / (rie1 * Delta_denom);
+
+                // Input impedance formula from memo (equation 16):
+                // N_+ = R1 * h_fe1 * (R_F + R_E) + R_E * r_ie1
+                // Z_in = r_ie1 * (R_F + R_E) * Δ_denom / 
+                //        ((R_F + R_E + r_ie1) * Δ_denom + R_E * (1 + h_fe2) * N_+)
+                const N_plus = R1 * hfe1 * (Rf + R_E) + R_E * rie1;
+                const Zin_numerator = rie1 * (Rf + R_E) * Delta_denom;
+                const Zin_denom = (Rf + R_E + rie1) * Delta_denom + R_E * (1 + hfe2) * N_plus;
+                const Zin = Zin_numerator / Zin_denom;
+
+                // Display AC Analysis results
+                document.getElementById('val_RE').innerText = formatResistor(R_E);
+                if (!isNaN(R_C) && R_C > 0) {
+                    document.getElementById('val_RC').innerText = formatResistor(R_C);
+                } else {
+                    document.getElementById('val_RC').innerText = "-";
+                }
+                document.getElementById('val_Av').innerText = Av.toFixed(2) + " (" + (20 * Math.log10(Av)).toFixed(1) + " dB)";
+                document.getElementById('val_Zin').innerText = formatResistor(Zin);
+
+                document.getElementById('results').style.display = 'block';
+                document.getElementById('initial-state').style.display = 'none';
+
+            } catch (e) {
+                console.error(e);
+                const errBox = document.getElementById('error-box');
+                errBox.textContent = "エラーが発生しました: " + e.message;
+                errBox.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+
+</html>
