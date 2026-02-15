@@ -1,0 +1,90 @@
+
+# Python関係全部
+Python/
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Test files
+*.wav
+test_data/
+
+# LTspice
+*.raw
+*.log
+*.plt
+*.fft
+*.net
+
+# KiCad temporary and backup files
+*.lck
+*.kicad_prl
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*.kicad_pro-bak
+*-backups/
+*.zip
+*.bak
+*.bck
+*-bak
+*.tmp
+
+# KiCad cache files
+*-cache.lib
+*-cache.dcm
+fp-info-cache
+sym-lib-table
+\#auto_saved_files\#
+
+
+# KiCad救援ライブラリ（rescueライブラリ）
+*-rescue.lib
+*-rescue.dcm
+*-rescue.kicad_sym
+
+# 自動生成ファイル
+*.xml
+*.csv.bak
+*.net

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuzz Face 動作点解析 (SPICE Model)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- Theme Toggle Switch -->
+    <div class="theme-switch-wrapper">
+        <button class="theme-switch" onclick="toggleTheme()" title="テーマ切替 / Toggle Theme">
+            <span class="knob"></span>
+        </button>
+        <span class="theme-icon" id="theme-icon">☀</span>
+    </div>
+
+    <h1>Fuzz Face 動作点解析</h1>
+
+    <div class="container">
+        <!-- LEFT PANEL: Schematic & Results -->
+        <div class="panel">
+            <div class="schematic-container">
+                <img id="schematic-img" src="FuzzFace-Classic.svg" alt="Fuzz Face Schematic" class="schematic-img">
+            </div>
+
+            <div class="results" id="results" style="display:none;">
+                <!-- Forward mode: Bias Resistors -->
+                <div id="result-forward">
+                    <h2>計算結果 (Bias Resistors)</h2>
+                    <table class="result-table">
+                        <tr>
+                            <th style="width: 20%">Ref</th>
+                            <th style="width: 40%">Calculated</th>
+                            <th style="width: 40%">Approx (E24)</th>
+                        </tr>
+                        <tr>
+                            <td><strong>R1</strong></td>
+                            <td id="res_R1" class="result-val">-</td>
+                            <td id="e24_R1">-</td>
+                        </tr>
+                        <tr id="row-R2">
+                            <td><strong>R2</strong></td>
+                            <td id="res_R2" class="result-val">-</td>
+                            <td id="e24_R2">-</td>
+                        </tr>
+                        <tr id="row-R2t" class="hidden">
+                            <td><strong>R2<sub>t</sub></strong></td>
+                            <td id="res_R2t" class="result-val">-</td>
+                            <td id="e24_R2t">-</td>
+                        </tr>
+                        <tr id="row-R2b" class="hidden">
+                            <td><strong>R2<sub>b</sub></strong></td>
+                            <td id="res_R2b" class="result-val">-</td>
+                            <td id="e24_R2b">-</td>
+                        </tr>
+                        <tr>
+                            <td><strong>R3</strong></td>
+                            <td id="res_R3" class="result-val">-</td>
+                            <td id="e24_R3">-</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Reverse mode: Collector Currents -->
+                <div id="result-reverse" class="hidden">
+                    <h2>計算結果 (Collector Currents)</h2>
+                    <table class="result-table">
+                        <tr>
+                            <th style="width: 40%">Param</th>
+                            <th style="width: 60%">Value</th>
+                        </tr>
+                        <tr>
+                            <td><strong>I<sub>C1</sub></strong></td>
+                            <td id="res_IC1" class="result-val">-</td>
+                        </tr>
+                        <tr>
+                            <td><strong>I<sub>C2</sub></strong></td>
+                            <td id="res_IC2" class="result-val">-</td>
+                        </tr>
+                    </table>
+                    <div id="convergence-info" class="convergence-info"></div>
+                </div>
+
+                <h2 style="margin-top: 15px;">各点電圧 (Node Voltages)</h2>
+                <table class="result-table">
+                    <tr>
+                        <td>V<sub>C1</sub></td>
+                        <td id="val_VC1" class="result-val">-</td>
+                        <td>V<sub>C2</sub></td>
+                        <td id="val_VC2" class="result-val">-</td>
+                    </tr>
+                    <tr>
+                        <td>V<sub>B1</sub></td>
+                        <td id="val_VB1" class="result-val">-</td>
+                        <td>V<sub>E2</sub></td>
+                        <td id="val_VE2" class="result-val">-</td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top: 15px;">動作点 (Operating Point)</h2>
+                <table class="result-table">
+                    <tr>
+                        <th>Param</th>
+                        <th>Q1 (I<sub>C1</sub>)</th>
+                        <th>Q2 (I<sub>C2</sub>)</th>
+                    </tr>
+                    <tr>
+                        <td>V<sub>BE</sub></td>
+                        <td id="mon_Vbe1">-</td>
+                        <td id="mon_Vbe2">-</td>
+                    </tr>
+                    <tr>
+                        <td>h<sub>FE</sub></td>
+                        <td id="mon_hfe1">-</td>
+                        <td id="mon_hfe2">-</td>
+                    </tr>
+                    <tr>
+                        <td>I<sub>B</sub></td>
+                        <td id="mon_Ib1">-</td>
+                        <td id="mon_Ib2">-</td>
+                    </tr>
+                    <tr>
+                        <td>r<sub>ie</sub></td>
+                        <td id="mon_rie1">-</td>
+                        <td id="mon_rie2">-</td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top: 15px;">交流解析 (AC Analysis)</h2>
+                <table class="result-table">
+                    <tr>
+                        <td>R<sub>E</sub> (RV1∥R3)</td>
+                        <td id="val_RE" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr>
+                        <td id="label_RC">R<sub>C</sub> (R2∥RV2)</td>
+                        <td id="val_RC" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr>
+                        <td>電圧利得 A<sub>v</sub></td>
+                        <td id="val_Av" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr>
+                        <td>入力インピーダンス Z<sub>in</sub></td>
+                        <td id="val_Zin" class="result-val" colspan="3">-</td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top: 15px;">出力電圧配分 (Output Voltage Swing)</h2>
+                <table class="result-table">
+                    <tr>
+                        <td>V<sub>R</sub> = I<sub>C2</sub> R<sub>2</sub></td>
+                        <td id="val_VR" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr>
+                        <td>V<sub>C</sub> = V<sub>CC</sub> - V<sub>R</sub> - V<sub>E2</sub></td>
+                        <td id="val_VC_swing" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr>
+                        <td>V<sub>R</sub> : V<sub>C</sub></td>
+                        <td id="val_VR_VC_ratio" class="result-val" colspan="3">-</td>
+                    </tr>
+                    <tr id="row-div-ratio" class="hidden">
+                        <td>分圧比 (1/N)</td>
+                        <td id="val_div_ratio" class="result-val" colspan="3">-</td>
+                    </tr>
+                </table>
+            </div>
+            <!-- Initial placeholder state -->
+            <div id="initial-state" style="text-align: center; color: #888; padding: 40px;">
+                <p>右側のパラメータを入力し、「計算実行」ボタンを押してください。</p>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Calculation Inputs -->
+        <div class="panel">
+            <h2>回路パラメータ & SPICEモデル</h2>
+
+            <!-- Mode Tabs -->
+            <div class="mode-tabs">
+                <button class="mode-tab active" id="tab-forward" onclick="switchCalcMode('forward')">順方向計算</button>
+                <button class="mode-tab" id="tab-reverse" onclick="switchCalcMode('reverse')">逆計算</button>
+            </div>
+
+            <div class="input-section">
+                <h3 class="spice-header">共通設定</h3>
+                <div class="input-group">
+                    <label>V<sub>CC</sub>:</label>
+                    <input type="text" id="vcc" value="9">
+                    <span class="unit">V</span>
+                </div>
+                <div class="input-group">
+                    <label>R<sub>F</sub> (帰還抵抗):</label>
+                    <input type="text" id="rf" value="100k">
+                    <span class="unit">Ω</span>
+                </div>
+
+                <!-- Forward mode only: target currents -->
+                <div id="input-forward">
+                    <div class="input-group">
+                        <label>I<sub>C1</sub> (目標):</label>
+                        <input type="text" id="ic1" value="50u">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>I<sub>C2</sub> (目標):</label>
+                        <input type="text" id="ic2" value="500u">
+                        <span class="unit">A</span>
+                    </div>
+                </div>
+
+                <!-- Reverse mode only: resistor values -->
+                <div id="input-reverse" class="hidden">
+                    <div class="input-group">
+                        <label>R<sub>1</sub>:</label>
+                        <input type="text" id="rev-r1" value="33k">
+                        <span class="unit">Ω</span>
+                    </div>
+                    <div class="input-group">
+                        <label>R<sub>2t</sub>:</label>
+                        <input type="text" id="rev-r2t" value="8.2k">
+                        <span class="unit">Ω</span>
+                    </div>
+                    <div class="input-group">
+                        <label>R<sub>2b</sub>:</label>
+                        <input type="text" id="rev-r2b" value="0">
+                        <span class="unit">Ω</span>
+                    </div>
+                    <div class="input-group">
+                        <label>R<sub>3</sub>:</label>
+                        <input type="text" id="rev-r3" value="390">
+                        <span class="unit">Ω</span>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>V<sub>T</sub> (熱電圧):</label>
+                    <input type="text" id="vt" value="25.85m">
+                    <span class="unit">V</span>
+                </div>
+                <div class="input-group">
+                    <label>RV<sub>1</sub> (Fuzz Pot):</label>
+                    <select id="rv1">
+                        <option value="0.1">0.1Ω</option>
+                        <option value="1" selected>1Ω</option>
+                        <option value="10">10Ω</option>
+                        <option value="100">100Ω</option>
+                        <option value="1k">1kΩ</option>
+                        <option value="10k">10kΩ</option>
+                    </select>
+                    <span class="unit"></span>
+                </div>
+                <div class="input-group">
+                    <label>RV<sub>2</sub> (Vol Pot):</label>
+                    <select id="rv2">
+                        <option value="100k">100kΩ</option>
+                        <option value="250k">250kΩ</option>
+                        <option value="500k" selected>500kΩ</option>
+                        <option value="1M">1MΩ</option>
+                        <option value="Infinity">∞ (Open)</option>
+                    </select>
+                    <span class="unit"></span>
+                </div>
+                <div class="input-group" id="input-div-number">
+                    <label>出力分圧 (Number):</label>
+                    <input type="text" id="div-number" value="1">
+                    <span class="unit">1/N</span>
+                </div>
+            </div>
+
+            <div class="input-section">
+                <h3 class="spice-header">
+                    Q1 Parameters
+                    <button class="toggle-btn" onclick="toggleMode('q1')">各パラメータを直接入力する</button>
+                </h3>
+
+                <!-- Text Mode -->
+                <div id="q1-mode-text">
+                    <span class="help-text">Paste .MODEL string here</span>
+                    <textarea id="q1-model"
+                        spellcheck="false">.MODEL 2SC8888-W NPN(IS=25.44f BF=380.43 NF=1.002 VAF=125.5 IKF=385m ISE=4.88f NE=1.35 BR=8.22 NR=1.01 VAR=18.5 IKR=180m ISC=32.5f NC=1.25 RB=12.8 IRB=50u RBM=2 RE=185m RC=880m CJE=15.32p VJE=0.75 MJE=0.34 CJC=5.12p VJC=0.55 MJC=0.32 FC=0.5 TF=445p XTF=8 VTF=12 ITF=300m TR=65n EG=1.11 XTI=3 XTB=1.5 Vceo=60 Icrating=150m mfg=virtual-transistor)</textarea>
+                </div>
+
+                <!-- Manual Mode -->
+                <div id="q1-mode-manual" class="hidden">
+                    <span class="help-text">Enter parameters manually</span>
+                    <div class="input-group">
+                        <label>Is:</label>
+                        <input type="text" id="q1-is" value="25.44f">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Bf:</label>
+                        <input type="text" id="q1-bf" value="380.43">
+                        <span class="unit">-</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Ise:</label>
+                        <input type="text" id="q1-ise" value="4.88f">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Ne:</label>
+                        <input type="text" id="q1-ne" value="1.35">
+                        <span class="unit">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-section">
+                <h3 class="spice-header">
+                    Q2 Parameters
+                    <button class="toggle-btn" onclick="toggleMode('q2')">各パラメータを直接入力する</button>
+                </h3>
+
+                <!-- Text Mode -->
+                <div id="q2-mode-text">
+                    <span class="help-text">Paste .MODEL string here</span>
+                    <textarea id="q2-model"
+                        spellcheck="false">.MODEL 2SC8888-W NPN(IS=25.44f BF=380.43 NF=1.002 VAF=125.5 IKF=385m ISE=4.88f NE=1.35 BR=8.22 NR=1.01 VAR=18.5 IKR=180m ISC=32.5f NC=1.25 RB=12.8 IRB=50u RBM=2 RE=185m RC=880m CJE=15.32p VJE=0.75 MJE=0.34 CJC=5.12p VJC=0.55 MJC=0.32 FC=0.5 TF=445p XTF=8 VTF=12 ITF=300m TR=65n EG=1.11 XTI=3 XTB=1.5 Vceo=60 Icrating=150m mfg=virtual-transistor)</textarea>
+                </div>
+
+                <!-- Manual Mode -->
+                <div id="q2-mode-manual" class="hidden">
+                    <span class="help-text">Enter parameters manually</span>
+                    <div class="input-group">
+                        <label>Is:</label>
+                        <input type="text" id="q2-is" value="25.44f">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Bf:</label>
+                        <input type="text" id="q2-bf" value="380.43">
+                        <span class="unit">-</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Ise:</label>
+                        <input type="text" id="q2-ise" value="4.88f">
+                        <span class="unit">A</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Ne:</label>
+                        <input type="text" id="q2-ne" value="1.35">
+                        <span class="unit">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="calculate()">計算実行 (Calculate)</button>
+            <div id="error-box" class="error-msg"></div>
+        </div>
+    </div>
+
+    <script src="js/theme.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/spice-parser.js"></script>
+    <script src="js/calculator.js"></script>
+    <script>
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
+                e.preventDefault();
+                calculate();
+            }
+        });
+    </script>
+</body>
+
+</html>
