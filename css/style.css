@@ -435,3 +435,55 @@ button,
         border-color 0.3s ease,
         box-shadow 0.3s ease;
 }
+
+/* --- Language Toggle Switch --- */
+.lang-switch-wrapper {
+    position: fixed;
+    top: 15px;
+    right: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 1000;
+}
+
+.lang-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: var(--fg-comment);
+    transition: color 0.3s ease;
+    line-height: 1;
+    letter-spacing: 0.5px;
+}
+
+.lang-switch {
+    position: relative;
+    width: 42px;
+    height: 24px;
+    background: var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    border: none;
+    padding: 0;
+}
+
+.lang-switch:hover {
+    background: var(--fg-comment);
+}
+
+.lang-switch .knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: var(--bg-main);
+    border-radius: 50%;
+    transition: transform 0.3s ease, background 0.3s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[lang="en"] .lang-switch .knob {
+    transform: translateX(18px);
+}

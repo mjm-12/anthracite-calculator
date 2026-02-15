@@ -31,12 +31,12 @@ function toggleMode(id) {
         modes[id] = 'manual';
         textDiv.classList.add('hidden');
         manualDiv.classList.remove('hidden');
-        btn.textContent = "SPICEモデル(文字列)入力に戻す";
+        btn.textContent = t('btn_spice');
     } else {
         modes[id] = 'text';
         textDiv.classList.remove('hidden');
         manualDiv.classList.add('hidden');
-        btn.textContent = "各パラメータを直接入力する";
+        btn.textContent = t('btn_manual');
     }
 }
 
@@ -46,13 +46,13 @@ function getTransistorParams(id) {
         return parseSpiceModel(modelStr);
     } else {
         return {
-            Is:  parseEngineering(document.getElementById(id + '-is').value),
-            Bf:  parseEngineering(document.getElementById(id + '-bf').value),
+            Is: parseEngineering(document.getElementById(id + '-is').value),
+            Bf: parseEngineering(document.getElementById(id + '-bf').value),
             Ise: parseEngineering(document.getElementById(id + '-ise').value),
-            Ne:  parseEngineering(document.getElementById(id + '-ne').value),
-            Nf:  1.0,
-            Rb:  0,
-            Re:  0,
+            Ne: parseEngineering(document.getElementById(id + '-ne').value),
+            Nf: 1.0,
+            Rb: 0,
+            Re: 0,
         };
     }
 }
@@ -164,7 +164,7 @@ function solveReverse(R1, R2, R3, Rf, Vcc, Vt, q1p, q2p) {
 
         const det = J11 * J22 - J12 * J21;
         if (Math.abs(det) < 1e-30) {
-            throw new Error("ヤコビアンが特異です。収束できません。");
+            throw new Error(t('error_jacobian'));
         }
 
         // Newton step: [dx1, dx2] = J^-1 * [-f1, -f2]
@@ -184,13 +184,13 @@ function solveReverse(R1, R2, R3, Rf, Vcc, Vt, q1p, q2p) {
             alpha *= 0.5;
         }
         if (alpha <= 1e-8) {
-            throw new Error("収束できません。抵抗値を確認してください。");
+            throw new Error(t('error_no_converge'));
         }
     }
 
     const [finalF1, finalF2] = residuals(ic1, ic2);
     if (Math.abs(finalF1) > 1e-6 || Math.abs(finalF2) > 1e-6) {
-        throw new Error("収束できません (" + iterations + "回反復)。抵抗値を確認してください。");
+        throw new Error(t('error_no_converge_iter').replace('%ITER%', iterations));
     }
 
     return { Ic1: ic1, Ic2: ic2, iterations: iterations };
@@ -239,8 +239,8 @@ function displayCommonResults(Q1, Q2, R1, R2, Rf, R3, Vcc, Ic1, Ic2, Vt, Ve2, di
     document.getElementById('mon_Vbe2').innerText = Q2.Vbe.toFixed(4) + " V";
     document.getElementById('mon_hfe1').innerText = Q1.hfe.toFixed(1);
     document.getElementById('mon_hfe2').innerText = Q2.hfe.toFixed(1);
-    document.getElementById('mon_Ib1').innerText  = (Q1.Ib * 1e6).toFixed(2) + " µA";
-    document.getElementById('mon_Ib2').innerText  = (Q2.Ib * 1e6).toFixed(2) + " µA";
+    document.getElementById('mon_Ib1').innerText = (Q1.Ib * 1e6).toFixed(2) + " µA";
+    document.getElementById('mon_Ib2').innerText = (Q2.Ib * 1e6).toFixed(2) + " µA";
     document.getElementById('mon_rie1').innerText = formatResistor(Q1.rie);
     document.getElementById('mon_rie2').innerText = formatResistor(Q2.rie);
 
@@ -351,8 +351,8 @@ function calculate() {
         document.getElementById('error-box').style.display = 'none';
 
         const Vcc = parseEngineering(document.getElementById('vcc').value);
-        const Rf  = parseEngineering(document.getElementById('rf').value);
-        const Vt  = parseEngineering(document.getElementById('vt').value);
+        const Rf = parseEngineering(document.getElementById('rf').value);
+        const Vt = parseEngineering(document.getElementById('vt').value);
         const Rv2 = parseEngineering(document.getElementById('rv2').value);
 
         const q1Params = getTransistorParams('q1');
@@ -370,7 +370,7 @@ function calculate() {
     } catch (e) {
         console.error(e);
         const errBox = document.getElementById('error-box');
-        errBox.textContent = "エラーが発生しました: " + e.message;
+        errBox.textContent = t('error_prefix') + e.message;
         errBox.style.display = 'block';
     }
 }
@@ -480,7 +480,7 @@ function calculateReverse(Vcc, Rf, Vt, Rv2, q1Params, q2Params) {
     const VC2 = Vcc - R2 * Ic2;
 
     if (VC2 < 0) {
-        throw new Error("V_C2 が負 (" + VC2.toFixed(3) + " V) です。R2 (= R2t + R2b = " + formatResistor(R2) + ") が大きすぎます。");
+        throw new Error(t('error_vc2_negative').replace('%VC2%', VC2.toFixed(3)).replace('%R2%', formatResistor(R2)));
     }
 
     // Show reverse results, hide forward

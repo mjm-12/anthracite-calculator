@@ -17,7 +17,15 @@
         <span class="theme-icon" id="theme-icon">☀</span>
     </div>
 
-    <h1>Fuzz Face 動作点解析</h1>
+    <!-- Language Toggle Switch -->
+    <div class="lang-switch-wrapper">
+        <span class="lang-label" id="lang-label">JA</span>
+        <button class="lang-switch" onclick="toggleLang()" title="言語切替 / Toggle Language">
+            <span class="knob"></span>
+        </button>
+    </div>
+
+    <h1 data-i18n="title">Fuzz Face 動作点解析</h1>
 
     <div class="container">
         <!-- LEFT PANEL: Schematic & Results -->
@@ -29,7 +37,7 @@
             <div class="results" id="results" style="display:none;">
                 <!-- Forward mode: Bias Resistors -->
                 <div id="result-forward">
-                    <h2>計算結果 (Bias Resistors)</h2>
+                    <h2 data-i18n="result_bias">計算結果 (Bias Resistors)</h2>
                     <table class="result-table">
                         <tr>
                             <th style="width: 20%">Ref</th>
@@ -66,7 +74,7 @@
 
                 <!-- Reverse mode: Collector Currents -->
                 <div id="result-reverse" class="hidden">
-                    <h2>計算結果 (Collector Currents)</h2>
+                    <h2 data-i18n="result_current">計算結果 (Collector Currents)</h2>
                     <table class="result-table">
                         <tr>
                             <th style="width: 40%">Param</th>
@@ -84,7 +92,7 @@
                     <div id="convergence-info" class="convergence-info"></div>
                 </div>
 
-                <h2 style="margin-top: 15px;">各点電圧 (Node Voltages)</h2>
+                <h2 style="margin-top: 15px;" data-i18n="node_voltages">各点電圧 (Node Voltages)</h2>
                 <table class="result-table">
                     <tr>
                         <td>V<sub>C1</sub></td>
@@ -100,7 +108,7 @@
                     </tr>
                 </table>
 
-                <h2 style="margin-top: 15px;">動作点 (Operating Point)</h2>
+                <h2 style="margin-top: 15px;" data-i18n="operating_point">動作点 (Operating Point)</h2>
                 <table class="result-table">
                     <tr>
                         <th>Param</th>
@@ -129,7 +137,7 @@
                     </tr>
                 </table>
 
-                <h2 style="margin-top: 15px;">交流解析 (AC Analysis)</h2>
+                <h2 style="margin-top: 15px;" data-i18n="ac_analysis">交流解析 (AC Analysis)</h2>
                 <table class="result-table">
                     <tr>
                         <td>R<sub>E</sub> (RV1∥R3)</td>
@@ -140,16 +148,16 @@
                         <td id="val_RC" class="result-val" colspan="3">-</td>
                     </tr>
                     <tr>
-                        <td>電圧利得 A<sub>v</sub></td>
+                        <td data-i18n="label_gain">電圧利得 A<sub>v</sub></td>
                         <td id="val_Av" class="result-val" colspan="3">-</td>
                     </tr>
                     <tr>
-                        <td>入力インピーダンス Z<sub>in</sub></td>
+                        <td data-i18n="label_zin">入力インピーダンス Z<sub>in</sub></td>
                         <td id="val_Zin" class="result-val" colspan="3">-</td>
                     </tr>
                 </table>
 
-                <h2 style="margin-top: 15px;">出力電圧配分 (Output Voltage Swing)</h2>
+                <h2 style="margin-top: 15px;" data-i18n="output_swing">出力電圧配分 (Output Voltage Swing)</h2>
                 <table class="result-table">
                     <tr>
                         <td>V<sub>R</sub> = I<sub>C2</sub> R<sub>2</sub></td>
@@ -164,36 +172,38 @@
                         <td id="val_VR_VC_ratio" class="result-val" colspan="3">-</td>
                     </tr>
                     <tr id="row-div-ratio" class="hidden">
-                        <td>分圧比 (1/N)</td>
+                        <td data-i18n="div_ratio">分圧比 (1/N)</td>
                         <td id="val_div_ratio" class="result-val" colspan="3">-</td>
                     </tr>
                 </table>
             </div>
             <!-- Initial placeholder state -->
             <div id="initial-state" style="text-align: center; color: #888; padding: 40px;">
-                <p>右側のパラメータを入力し、「計算実行」ボタンを押してください。</p>
+                <p data-i18n="initial_msg">右側のパラメータを入力し、「計算実行」ボタンを押してください。</p>
             </div>
         </div>
 
         <!-- RIGHT PANEL: Calculation Inputs -->
         <div class="panel">
-            <h2>回路パラメータ & SPICEモデル</h2>
+            <h2 data-i18n="circuit_params">回路パラメータ & SPICEモデル</h2>
 
             <!-- Mode Tabs -->
             <div class="mode-tabs">
-                <button class="mode-tab active" id="tab-forward" onclick="switchCalcMode('forward')">順方向計算</button>
-                <button class="mode-tab" id="tab-reverse" onclick="switchCalcMode('reverse')">逆計算</button>
+                <button class="mode-tab active" id="tab-forward" onclick="switchCalcMode('forward')"
+                    data-i18n="tab_forward">順方向計算</button>
+                <button class="mode-tab" id="tab-reverse" onclick="switchCalcMode('reverse')"
+                    data-i18n="tab_reverse">逆計算</button>
             </div>
 
             <div class="input-section">
-                <h3 class="spice-header">共通設定</h3>
+                <h3 class="spice-header" data-i18n="common_settings">共通設定</h3>
                 <div class="input-group">
                     <label>V<sub>CC</sub>:</label>
                     <input type="text" id="vcc" value="9">
                     <span class="unit">V</span>
                 </div>
                 <div class="input-group">
-                    <label>R<sub>F</sub> (帰還抵抗):</label>
+                    <label data-i18n="label_rf">R<sub>F</sub> (帰還抵抗):</label>
                     <input type="text" id="rf" value="100k">
                     <span class="unit">Ω</span>
                 </div>
@@ -201,12 +211,12 @@
                 <!-- Forward mode only: target currents -->
                 <div id="input-forward">
                     <div class="input-group">
-                        <label>I<sub>C1</sub> (目標):</label>
+                        <label data-i18n="label_ic1">I<sub>C1</sub> (目標):</label>
                         <input type="text" id="ic1" value="50u">
                         <span class="unit">A</span>
                     </div>
                     <div class="input-group">
-                        <label>I<sub>C2</sub> (目標):</label>
+                        <label data-i18n="label_ic2">I<sub>C2</sub> (目標):</label>
                         <input type="text" id="ic2" value="500u">
                         <span class="unit">A</span>
                     </div>
@@ -237,7 +247,7 @@
                 </div>
 
                 <div class="input-group">
-                    <label>V<sub>T</sub> (熱電圧):</label>
+                    <label data-i18n="label_vt">V<sub>T</sub> (熱電圧):</label>
                     <input type="text" id="vt" value="25.85m">
                     <span class="unit">V</span>
                 </div>
@@ -265,7 +275,7 @@
                     <span class="unit"></span>
                 </div>
                 <div class="input-group" id="input-div-number">
-                    <label>出力分圧 (Number):</label>
+                    <label data-i18n="label_div">出力分圧 (Number):</label>
                     <input type="text" id="div-number" value="1">
                     <span class="unit">1/N</span>
                 </div>
@@ -274,7 +284,7 @@
             <div class="input-section">
                 <h3 class="spice-header">
                     Q1 Parameters
-                    <button class="toggle-btn" onclick="toggleMode('q1')">各パラメータを直接入力する</button>
+                    <button class="toggle-btn" onclick="toggleMode('q1')" data-i18n="btn_manual">各パラメータを直接入力する</button>
                 </h3>
 
                 <!-- Text Mode -->
@@ -313,7 +323,7 @@
             <div class="input-section">
                 <h3 class="spice-header">
                     Q2 Parameters
-                    <button class="toggle-btn" onclick="toggleMode('q2')">各パラメータを直接入力する</button>
+                    <button class="toggle-btn" onclick="toggleMode('q2')" data-i18n="btn_manual">各パラメータを直接入力する</button>
                 </h3>
 
                 <!-- Text Mode -->
@@ -349,7 +359,7 @@
                 </div>
             </div>
 
-            <button onclick="calculate()">計算実行 (Calculate)</button>
+            <button onclick="calculate()" data-i18n="btn_calc">計算実行 (Calculate)</button>
             <div id="error-box" class="error-msg"></div>
         </div>
     </div>
@@ -358,8 +368,9 @@
     <script src="js/utils.js"></script>
     <script src="js/spice-parser.js"></script>
     <script src="js/calculator.js"></script>
+    <script src="js/i18n.js"></script>
     <script>
-        document.addEventListener('keydown', function(e) {
+        document.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
                 e.preventDefault();
                 calculate();
