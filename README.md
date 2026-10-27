@@ -8,7 +8,7 @@ NPN 2 石の直結帰還型ファズ（Fuzz Face 系）の動作点、利得、�
 
 ### 導入
 
-GitHub Pages で公開している。ブラウザで開けばインストールなしで使える。
+GitHub Pages で公開しているため、ブラウザで開けばインストールなしで利用可能。
 
 https://mjm-12.github.io/anthracite-calculator/
 
