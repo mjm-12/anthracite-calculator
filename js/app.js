@@ -168,13 +168,20 @@
     const V = (v, d) => (isFinite(v) ? v.toFixed(d === undefined ? 3 : d) + ' V' : '–');
     const X = (v, d) => (isFinite(v) ? v.toFixed(d === undefined ? 1 : d) : '–');
 
+    // All result tables share one 4-column grid: label | value | label | value
+    // (fixed layout + identical colgroup), so values line up across sections.
+    //   [label, v]      -> v in column 2, columns 3-4 empty
+    //   [label, v1, v2] -> v1 in column 2, v2 spans columns 3-4 (right edge = column 4)
+    const COLS = '<colgroup><col class="cl"><col class="cv"><col class="cl"><col class="cv"></colgroup>';
+
     function row(cells, cls) {
-        return '<tr' + (cls ? ' class="' + cls + '"' : '') + '>' +
-            cells.map((c, i) => (i === 0 ? '<th>' + c + '</th>' : '<td>' + c + '</td>')).join('') + '</tr>';
+        let h = '<th>' + cells[0] + '</th><td>' + cells[1] + '</td>';
+        h += cells.length > 2 ? '<td colspan="2">' + cells[2] + '</td>' : '<td colspan="2"></td>';
+        return '<tr' + (cls ? ' class="' + cls + '"' : '') + '>' + h + '</tr>';
     }
 
     function table(head, rows, cls) {
-        return '<table class="' + (cls || '') + '">' +
+        return '<table class="' + (cls || '') + '">' + COLS +
             (head ? '<thead>' + row(head) + '</thead>' : '') +
             '<tbody>' + rows.join('') + '</tbody></table>';
     }
@@ -187,7 +194,7 @@
             rows.push('<tr><th>' + a[0] + '</th><td>' + a[1] + '</td>' +
                 (b ? '<th>' + b[0] + '</th><td>' + b[1] + '</td>' : '<th></th><td></td>') + '</tr>');
         }
-        return '<table class="pairs"><tbody>' + rows.join('') + '</tbody></table>';
+        return '<table class="pairs">' + COLS + '<tbody>' + rows.join('') + '</tbody></table>';
     }
 
     function render(r, inp) {
@@ -242,9 +249,7 @@
         const gain = (v, db) => gainUnit === 'x'
             ? (isFinite(v) ? Number(v.toPrecision(4)) + '×' : '–') : (isFinite(db) ? db.toFixed(1) + ' dB' : '–');
         const acl = [
-            ['A<sub>vs</sub> <button type="button" class="seg2 gu" id="gain-unit" aria-pressed="' + (gainUnit === 'x') +
-                '" aria-label="gain unit dB / ×" title="dB / × (Alt+G)"><span>dB</span><span>×</span></button>',
-             '<b>' + gain(avs.AvS, avs.AvSdB) + '</b>'], ['A<sub>v</sub>', gain(ac.Av, ac.AvdB)],
+            ['A<sub>vs</sub>', '<b>' + gain(avs.AvS, avs.AvSdB) + '</b>'], ['A<sub>v</sub>', gain(ac.Av, ac.AvdB)],
             ['R<sub>E</sub>', R(ac.RE)], ['R<sub>C</sub>', R(ac.RC)],
             ['Z<sub>in</sub>', R(ac.Zin)],
         ];
@@ -333,6 +338,7 @@
         try {
             const res = FFEngine.evaluate(inp);
             last = { inp: inp, res: res };
+            publishState(inp);
             render(res, inp);
             if (rfKept !== null) $('rf').value = res.RfComputed && isFinite(res.Rf) ? formatEng(parseFloat(res.Rf.toPrecision(4))) : 'calc';
         } catch (e) {
@@ -496,7 +502,7 @@
             if (open) kept[id] = v; else $(id).value = v;
         }
         if (d.rfmode === 've' || d.rfmode === 'rf') setVeMode(d.rfmode === 've');
-        if (d['gain-unit'] === 'dB' || d['gain-unit'] === 'x') gainUnit = d['gain-unit'];
+        if (d['gain-unit'] === 'dB' || d['gain-unit'] === 'x') { gainUnit = d['gain-unit']; paintGainUnit(); }
         if (d.mode === 'reverse' || d.mode === 'forward') {
             form.querySelector('input[name="mode"][value="' + d.mode + '"]').checked = true;
         }
@@ -677,169 +683,124 @@
 
     // ---------- gain unit (dB / ×): display only; CSV results keep both ----------
     let gainUnit = 'dB';
+    function paintGainUnit() { $('gain-unit').setAttribute('aria-pressed', String(gainUnit === 'x')); }
     function toggleGainUnit() {
-        const hadFocus = document.activeElement && document.activeElement.id === 'gain-unit';
         gainUnit = gainUnit === 'dB' ? 'x' : 'dB';
+        paintGainUnit();
         clearTimeout(timer);
         compute();
-        if (hadFocus && $('gain-unit')) $('gain-unit').focus();
     }
-    out.addEventListener('click', (e) => { if (e.target.closest('#gain-unit')) toggleGainUnit(); });
+    $('gain-unit').addEventListener('click', toggleGainUnit);
 
-    // ---------- Bode dialog ----------
+    // ---------- Bode: modeless dialog + pop-out windows ----------
     const bdlg = $('bdlg'), bplot = $('bplot');
+    const BODE_GEOM = 'ffop.bode.dialog';
+    const bodeEl = { svg: bplot, sum: $('bsum'), msg: $('bmsg') };
+    const chan = typeof BroadcastChannel === 'function' ? new BroadcastChannel(FFBode.CHANNEL) : null;
+
+    // default box: over the results column, ~60vh tall
+    function defaultGeom() {
+        const r = (window.innerWidth >= 1400 ? $('results') : document.querySelector('.col-r')).getBoundingClientRect();
+        return { x: Math.round(r.left), y: Math.round(r.top + 30), w: Math.round(Math.max(360, r.width)), h: Math.round(window.innerHeight * 0.6) };
+    }
+    function placeBode() {
+        let g = null;
+        try { g = JSON.parse(localStorage.getItem(BODE_GEOM) || 'null'); } catch (e) { g = null; }
+        if (!g || !(g.w > 0)) g = defaultGeom();
+        const W = window.innerWidth, H = window.innerHeight;
+        g.w = Math.min(Math.max(g.w, 320), W); g.h = Math.min(Math.max(g.h, 240), H);
+        g.x = Math.min(Math.max(g.x, 0), W - g.w); g.y = Math.min(Math.max(g.y, 0), H - g.h);
+        Object.assign(bdlg.style, { left: g.x + 'px', top: g.y + 'px', width: g.w + 'px', height: g.h + 'px' });
+    }
+    function saveGeom() {
+        const r = bdlg.getBoundingClientRect();
+        try { localStorage.setItem(BODE_GEOM, JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) })); } catch (e) { /* ignore */ }
+    }
 
     function openBode() {
-        bdlg.showModal();
-        $('fstart').focus();
-        clearTimeout(timer);
-        compute();
-        if (!last) drawBode(null);
+        if (bdlg.open) return;
+        const keep = document.activeElement;
+        placeBode();
+        bdlg.show();
+        if (keep && keep !== document.body) keep.focus();   // don't steal focus
+        redrawBode();
+    }
+    function closeBode() {
+        const inside = bdlg.contains(document.activeElement);
+        bdlg.close();
+        if (inside) $('bode-btn').focus();
+    }
+    function toggleBode() { if (bdlg.open) closeBode(); else openBode(); }
+
+    function popoutBode() {
+        publishState();
+        window.open('bode.html', '_blank', 'width=960,height=640');
+    }
+
+    function redrawBode() {
+        if (!bdlg.open) return;
+        if (!last) { bodeEl.msg.textContent = status.textContent; bplot.classList.add('stale'); return; }
+        const rg = FFBode.range($('fstart'), $('fstop'));
+        if (!rg) { bodeEl.msg.textContent = '入力値が不正: f'; return; }
+        FFBode.draw(bodeEl, last.inp, rg, gainUnit, last.res);
     }
 
     // called from render() after every successful evaluation
-    function bodeRefresh(r, inp) {
-        if (bdlg.open) drawBode({ r: r, inp: inp });
-    }
+    function bodeRefresh() { redrawBode(); }
 
-    bdlg.addEventListener('input', () => schedule());
+    // current inputs -> pop-out windows (BroadcastChannel) + localStorage for windows opened later
+    function publishState(inp) {
+        inp = inp || (last && last.inp);
+        if (!inp) return;
+        const rg = FFBode.range($('fstart'), $('fstop'));
+        const msg = { type: 'state', inp: inp, gainUnit: gainUnit, range: rg };
+        try { localStorage.setItem(FFBode.STATE_KEY, FFBode.toJSON(msg)); } catch (e) { /* ignore */ }
+        if (chan) chan.postMessage(msg);
+    }
+    if (chan) chan.onmessage = (e) => { if (e.data && e.data.type === 'hello') publishState(); };
+
+    bdlg.addEventListener('input', () => { redrawBode(); });
     bdlg.addEventListener('keydown', (e) => {
         const el = e.target;
+        if (e.key === 'Escape') { e.preventDefault(); closeBode(); return; }
         if (el.tagName === 'INPUT' && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey) {
-            if (stepValue(el, e.key === 'ArrowUp' ? 1 : -1)) { e.preventDefault(); schedule(0); }
-        } else if (e.key === 'Enter' && el.tagName === 'INPUT') { e.preventDefault(); schedule(0); }
+            if (stepValue(el, e.key === 'ArrowUp' ? 1 : -1)) { e.preventDefault(); save(); redrawBode(); }
+        } else if (e.key === 'Enter' && el.tagName === 'INPUT') { e.preventDefault(); redrawBode(); }
     });
+    bdlg.addEventListener('change', save);
     $('bform').addEventListener('submit', (e) => e.preventDefault());
-    $('bclose').addEventListener('click', () => bdlg.close());
-    $('bode-btn').addEventListener('click', openBode);
-    bdlg.addEventListener('close', () => $('bode-btn').focus());
-    window.addEventListener('resize', () => { if (bdlg.open && last) drawBode({ r: last.res, inp: last.inp }); });
+    $('bclose').addEventListener('click', closeBode);
+    $('bwin').addEventListener('click', popoutBode);
+    $('bode-btn').addEventListener('click', toggleBode);
 
-    function bodeRange() {
-        const a = parseEngineering($('fstart').value), b = parseEngineering($('fstop').value);
-        const ok = a > 0 && b > a && isFinite(b);
-        $('fstart').classList.toggle('bad', !(a > 0 && isFinite(a)));
-        $('fstop').classList.toggle('bad', !(b > 0 && isFinite(b)) || (a > 0 && !(b > a)));
-        return ok ? { fStart: a, fStop: b } : null;
-    }
-
-    function drawBode(st) {
-        const msg = $('bmsg'), sum = $('bsum');
-        if (!st) { msg.textContent = status.textContent; bplot.innerHTML = ''; sum.innerHTML = ''; return; }
-        const rg = bodeRange();
-        if (!rg) { msg.textContent = '入力値が不正: f'; return; }
-        if (typeof FFEngine.acSweep !== 'function') { msg.textContent = 'engine に acSweep が無い'; return; }
-        let sw;
-        try {
-            sw = FFEngine.acSweep(st.inp, { fStart: rg.fStart, fStop: rg.fStop, n: 241 });
-        } catch (e) { msg.textContent = e && e.message ? e.message : String(e); return; }
-        const r = st.r;
-        const inactive = [r.q1, r.q2].some((q) => q && q.region && q.region !== 'active');
-        msg.textContent = inactive ? (r.warnings || []).join(' / ') : '';
-        const f3 = sw.f3dB || {};
-        const pk = sw.peak;
-        sum.innerHTML =
-            '<dt>A<sub>vs</sub> mid</dt><dd>' + (!isFinite(sw.midbandDB) ? '–' : gainUnit === 'x'
-                ? Number(Math.pow(10, sw.midbandDB / 20).toPrecision(4)) + '×' : sw.midbandDB.toFixed(1) + ' dB') + '</dd>' +
-            '<dt>f<sub>L</sub></dt><dd>' + fEdge(f3.low, f3.lowFlag, rg) + '</dd>' +
-            '<dt>f<sub>H</sub></dt><dd>' + fEdge(f3.high, f3.highFlag, rg) + '</dd>' +
-            (pk && isFinite(pk.dB)   // peak.dB is relative to the mid-band level
-                ? '<dt>peak</dt><dd>' + (gainUnit === 'x' ? '×' + Math.pow(10, pk.dB / 20).toFixed(2)
-                    : (pk.dB >= 0 ? '+' : '−') + Math.abs(pk.dB).toFixed(1) + ' dB') +
-                  ' @ ' + formatSI(pk.f, 'Hz', 3) + '</dd>' : '');
-        plotBode(sw, rg);
-    }
-
-    const fHz = (v) => (v > 0 && isFinite(v) ? formatSI(v, 'Hz', 3) : '–');
-    // -3 dB edge with the engine's flag: below / above the sweep range, or no band at all
-    function fEdge(v, flag, rg) {
-        if (v > 0 && isFinite(v)) return fHz(v);
-        if (flag === '<fStart') return '&lt; ' + fHz(rg.fStart);
-        if (flag === '>fStop') return '&gt; ' + fHz(rg.fStop);
-        return '—';
-    }
-
-    function niceStep(span, target) {
-        const raw = span / target, e = Math.pow(10, Math.floor(Math.log10(raw)));
-        for (const m of [1, 2, 2.5, 5, 10]) if (m * e >= raw) return m * e;
-        return 10 * e;
-    }
-
-    function plotBode(sw, rg) {
-        const box = bplot.getBoundingClientRect();
-        const W = Math.max(300, Math.round(box.width)), H = Math.max(200, Math.round(box.height));
-        bplot.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-        const L = 52, R = 16, T = 8, B = 26, GAP = 18;
-        const hTop = Math.round((H - T - B - GAP) * 0.62), hBot = H - T - B - GAP - hTop;
-        const top = { y0: T, y1: T + hTop }, bot = { y0: T + hTop + GAP, y1: H - B };
-        const lx0 = Math.log10(rg.fStart), lx1 = Math.log10(rg.fStop);
-        const X = (f) => L + (Math.log10(f) - lx0) / (lx1 - lx0) * (W - L - R);
-        const f = sw.f || [], dB = (sw.AvS && sw.AvS.dB) || [], ph = (sw.AvS && sw.AvS.phaseDeg) || [];
-        const fin = (a) => a.filter((v) => isFinite(v));
-        // dB range: 10 dB grid, at most ~80 dB below the peak
-        let dmax = Math.max.apply(null, fin(dB).concat([0, isFinite(sw.midbandDB) ? sw.midbandDB : 0])), dmin = Math.min.apply(null, fin(dB).concat([dmax - 10]));
-        dmax = Math.ceil(dmax / 10) * 10; dmin = Math.max(Math.floor(dmin / 10) * 10, dmax - 80);
-        const dstep = niceStep(dmax - dmin, 5);
-        let pmax = Math.max.apply(null, fin(ph).concat([0])), pmin = Math.min.apply(null, fin(ph).concat([0]));
-        pmax = Math.ceil(pmax / 45) * 45; pmin = Math.floor(pmin / 45) * 45;
-        if (pmax - pmin < 90) { pmax += 45; pmin -= 45; }
-        const pstep = (pmax - pmin) > 180 ? 90 : 45;
-        const Yd = (v) => top.y0 + (dmax - Math.min(Math.max(v, dmin), dmax)) / (dmax - dmin) * (top.y1 - top.y0);
-        const Yp = (v) => bot.y0 + (pmax - Math.min(Math.max(v, pmin), pmax)) / (pmax - pmin) * (bot.y1 - bot.y0);
-        let s = '';
-        // vertical decade grid (both panels) + labels
-        for (let d = Math.ceil(lx0); d <= Math.floor(lx1); d++) {
-            const x = X(Math.pow(10, d)).toFixed(1);
-            s += '<line class="g" x1="' + x + '" y1="' + top.y0 + '" x2="' + x + '" y2="' + top.y1 + '"/>';
-            s += '<line class="g" x1="' + x + '" y1="' + bot.y0 + '" x2="' + x + '" y2="' + bot.y1 + '"/>';
-            s += '<text class="t" x="' + x + '" y="' + (H - 8) + '" text-anchor="middle">' + formatSI(Math.pow(10, d), 'Hz', 1) + '</text>';
-        }
-        for (let v = dmin; v <= dmax + 1e-9; v += dstep) {
-            const y = Yd(v).toFixed(1);
-            s += '<line class="g" x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '"/>';
-            s += '<text class="t" x="' + (L - 6) + '" y="' + (+y + 4) + '" text-anchor="end">' + Math.round(v) + '</text>';
-        }
-        for (let v = pmin; v <= pmax + 1e-9; v += pstep) {
-            const y = Yp(v).toFixed(1);
-            s += '<line class="g" x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '"/>';
-            s += '<text class="t" x="' + (L - 6) + '" y="' + (+y + 4) + '" text-anchor="end">' + Math.round(v) + '°</text>';
-        }
-        s += '<rect class="ax" x="' + L + '" y="' + top.y0 + '" width="' + (W - L - R) + '" height="' + (top.y1 - top.y0) + '"/>';
-        s += '<rect class="ax" x="' + L + '" y="' + bot.y0 + '" width="' + (W - L - R) + '" height="' + (bot.y1 - bot.y0) + '"/>';
-        s += '<text class="t" x="' + (L + 6) + '" y="' + (top.y0 + 14) + '">|A<tspan dy="3" font-size="8">vs</tspan><tspan dy="-3">| dB</tspan></text>';
-        s += '<text class="t" x="' + (L + 6) + '" y="' + (bot.y0 + 14) + '">∠A<tspan dy="3" font-size="8">vs</tspan></text>';
-        const line = (ys, Y) => {
-            let d = '', pen = false;
-            for (let i = 0; i < f.length; i++) {
-                if (!(f[i] > 0) || !isFinite(ys[i])) { pen = false; continue; }
-                d += (pen ? 'L' : 'M') + X(f[i]).toFixed(1) + ',' + Y(ys[i]).toFixed(1);
-                pen = true;
-            }
-            return d;
+    // drag by the title bar
+    $('btitle').addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button')) return;
+        const r = bdlg.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+        $('btitle').setPointerCapture(e.pointerId);
+        const move = (ev) => {
+            const x = Math.min(Math.max(ev.clientX - dx, 0), window.innerWidth - r.width);
+            const y = Math.min(Math.max(ev.clientY - dy, 0), window.innerHeight - 24);
+            bdlg.style.left = x + 'px'; bdlg.style.top = y + 'px';
         };
-        // reference: mid-band level (dashed) and its -3 dB level (faint)
-        if (isFinite(sw.midbandDB)) {
-            for (const [v, cls] of [[sw.midbandDB, 'ref'], [sw.midbandDB - 3, 'ref3']]) {
-                if (v < dmin || v > dmax) continue;
-                const y = Yd(v).toFixed(1);
-                s += '<line class="' + cls + '" x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '"/>';
-            }
-        }
-        s += '<path class="l" d="' + line(dB, Yd) + '"/>';
-        s += '<path class="l" d="' + line(ph, Yp) + '"/>';
-        // -3 dB markers
-        const f3 = sw.f3dB || {};
-        for (const [k, lbl] of [['low', 'f<tspan dy="3" font-size="8">L</tspan>'], ['high', 'f<tspan dy="3" font-size="8">H</tspan>']]) {
-            const v = f3[k];
-            if (!(v >= rg.fStart && v <= rg.fStop)) continue;
-            const x = X(v).toFixed(1);
-            s += '<line class="mk" x1="' + x + '" y1="' + top.y0 + '" x2="' + x + '" y2="' + bot.y1 + '"/>';
-            const right = X(v) < (L + W - R) / 2;
-            s += '<text class="mt" x="' + (+x + (right ? 4 : -4)) + '" y="' + (k === 'low' ? top.y1 - 6 : top.y0 + 30) + '" text-anchor="' + (right ? 'start' : 'end') + '">' +
-                lbl + '<tspan dy="-3"> ' + formatSI(v, 'Hz', 3) + '</tspan></text>';
-        }
-        bplot.innerHTML = s;
+        const up = () => {
+            $('btitle').removeEventListener('pointermove', move);
+            $('btitle').removeEventListener('pointerup', up);
+            saveGeom();
+        };
+        $('btitle').addEventListener('pointermove', move);
+        $('btitle').addEventListener('pointerup', up);
+    });
+    // resize (CSS resize handle): redraw + remember size
+    let roTimer = null;
+    if (typeof ResizeObserver === 'function') {
+        new ResizeObserver(() => {
+            if (!bdlg.open) return;
+            clearTimeout(roTimer);
+            roTimer = setTimeout(() => { redrawBode(); saveGeom(); }, 80);
+        }).observe(bdlg);
     }
+    window.addEventListener('resize', () => { if (bdlg.open) { placeBode(); redrawBode(); } });
 
     // ---------- SPICE parameter dialog ----------
     // Edits KEY=value tokens of the model text on apply; the text stays the source of truth.
@@ -951,10 +912,9 @@
         }
         if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyB' || e.key === 'b' || e.key === 'B')) {
             e.preventDefault();
-            if ($('bdlg').open) $('bdlg').close(); else openBode();
+            if (e.shiftKey) popoutBode(); else toggleBode();
             return;
         }
-        if ($('bdlg').open) return;
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); exportCsv(); return; }
         if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); transfer(); return; }
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); $('csv-file').click(); return; }

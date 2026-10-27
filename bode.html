@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuzz Face OP · bode</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body class="bodepage">
+    <main class="bode-pane">
+        <div class="bhead">
+            <div class="bfields">
+                <label for="fstart">f</label><span class="pair"><input id="fstart" value="10" data-step="e24"><i>–</i><input id="fstop" value="1M" data-step="e24" aria-label="f stop"></span><span class="u">Hz</span>
+            </div>
+            <dl class="bsum" id="bsum"></dl>
+        </div>
+        <div class="bmsg" id="bmsg"></div>
+        <svg id="bplot" role="img" aria-label="|A_vs| and phase vs frequency"></svg>
+    </main>
+
+    <script src="js/utils.js"></script>
+    <script src="js/spice-parser.js"></script>
+    <script src="js/engine.js"></script>
+    <script src="js/bode-plot.js"></script>
+    <script src="js/bode-app.js"></script>
+</body>
+
+</html>

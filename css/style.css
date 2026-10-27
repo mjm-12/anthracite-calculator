@@ -213,11 +213,11 @@ table.primary th { color: var(--fg); font-size: 15px; }
 table.primary td + td { font-weight: 400; }
 
 /* results: compact label-value pairs, sized to content (calculator only) */
-#out table { width: auto; }
-#out th { width: 3.4em; }
-#out td { width: 6.8em; }
-#out table.pairs th + td + th { padding-left: 22px; }
-#out table.q td { width: 6.2em; }
+#out table { table-layout: fixed; width: calc(2 * (4em + 7.6em)); }
+#out col.cl { width: 4em; }
+#out col.cv { width: 7.6em; }
+#out th:not(:first-child) { padding-left: 14px; }
+#out td { overflow: hidden; text-overflow: ellipsis; }
 .fit-par th { width: auto; }
 
 .warn {
@@ -372,11 +372,28 @@ a.open { display: inline-flex; align-items: center; height: 20px; text-decoratio
 
 /* Bode dialog */
 dialog.bode {
-    width: min(90vw, 1500px);
-    height: min(80vh, 950px);
-    padding: 12px 16px;
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    padding: 0 12px 10px;
+    min-width: 320px;
+    min-height: 240px;
+    resize: both;
+    overflow: hidden;
+    z-index: 10;
 }
-dialog.bode form { display: flex; flex-direction: column; height: 100%; gap: 6px; }
+dialog.bode[open] { display: flex; flex-direction: column; }
+dialog.bode form { flex: 1; min-height: 0; }
+.btitle {
+    display: flex; align-items: center; gap: 4px;
+    margin: 0 -12px 8px; padding: 3px 6px 3px 12px;
+    border-bottom: 1px solid var(--rule);
+    cursor: move; user-select: none; touch-action: none;
+    color: var(--mute); font-size: 11px;
+}
+.btitle span { flex: 1; }
+.btitle .open { height: 20px; }
+dialog.bode form, .bode-pane { display: flex; flex-direction: column; gap: 6px; }
 .bhead { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
 .bfields {
     display: grid;
@@ -399,5 +416,11 @@ dialog.bode form { display: flex; flex-direction: column; height: 100%; gap: 6px
 #bplot .mt { fill: var(--fg); font-size: 11px; font-family: inherit; }
 #bplot .ref { stroke: var(--mute); stroke-width: 1; stroke-dasharray: 5 4; }
 #bplot .ref3 { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 2 4; }
-.seg2.gu { display: inline-flex; height: 18px; font-size: 11px; vertical-align: middle; margin-left: 4px; }
+.seg2.gu { display: inline-flex; height: 20px; font-size: 11px; }
 .seg2.gu span { padding: 0 5px; }
+
+/* bode.html (pop-out) */
+body.bodepage { height: 100vh; }
+.bode-pane { height: 100vh; padding: 10px 14px; }
+.bode-pane #bplot.stale, dialog.bode #bplot.stale { opacity: 0.35; }
+#gain-unit { margin-left: 2px; }

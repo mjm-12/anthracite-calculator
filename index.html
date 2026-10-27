@@ -100,20 +100,25 @@
                 <button type="button" class="open" id="csv-in" title="CSV import (Ctrl+O / drop a .csv)">import</button>
                 <button type="button" class="open" id="csv-out" title="CSV export (Ctrl+S)">export</button>
                 <button type="button" class="open" id="xfer" title="transfer result to the other mode (Ctrl+Enter)" disabled>→ R→I<sub>C</sub></button>
-                <button type="button" class="open" id="bode-btn" title="Bode plot (Alt+B)">bode</button>
+                <button type="button" class="open" id="bode-btn" title="Bode plot (Alt+B) / separate window (Shift+Alt+B)">bode</button>
+                <button type="button" class="seg2 gu" id="gain-unit" aria-pressed="false" aria-label="gain unit dB / ×" title="gain in dB / × (Alt+G)"><span>dB</span><span>×</span></button>
                 <input type="file" id="csv-file" accept=".csv,text/csv" hidden>
             </div>
         </div>
     </main>
 
     <dialog id="bdlg" class="bode" aria-label="Bode plot">
+        <div class="btitle" id="btitle" title="drag to move">
+            <span>bode</span>
+            <button type="button" class="open" id="bwin" title="open in a separate window (Shift+Alt+B)">window</button>
+            <button type="button" class="open" id="bclose" title="Esc / Alt+B">close</button>
+        </div>
         <form id="bform" method="dialog" autocomplete="off">
             <div class="bhead">
                 <div class="bfields">
                     <label for="fstart">f</label><span class="pair"><input id="fstart" value="10" data-step="e24" data-lbl="f_start"><i>–</i><input id="fstop" value="1M" data-step="e24" data-lbl="f_stop" aria-label="f stop"></span><span class="u">Hz</span>
                 </div>
                 <dl class="bsum" id="bsum"></dl>
-                <button type="button" class="open" id="bclose" title="Esc">close</button>
             </div>
             <div class="bmsg" id="bmsg"></div>
             <svg id="bplot" role="img" aria-label="|A_vs| and phase vs frequency"></svg>
@@ -136,6 +141,7 @@
     <script src="js/utils.js"></script>
     <script src="js/spice-parser.js"></script>
     <script src="js/engine.js"></script>
+    <script src="js/bode-plot.js"></script>
     <script src="js/app.js"></script>
 </body>
 
