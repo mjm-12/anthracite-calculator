@@ -276,6 +276,21 @@
         try { localStorage.setItem(CALC_KEY, JSON.stringify(d)); } catch (e) { return setStatus('localStorage に書けない', true); }
         location.href = 'index.html';
     }
+    // Target transistor from fit.html?q=1|2 (opened from the calculator's Q1/Q2 "fit" button)
+    const qp = new URLSearchParams(location.search).get('q');
+    const target = qp === '1' || qp === '2' ? 'q' + qp : null;
+    if (target) {
+        $('to-' + target).classList.add('target');
+        $('to-' + target).title += ' (Ctrl+Enter)';
+        document.title = 'Fuzz Face OP · fit Q' + qp;
+    }
+    // Ctrl+Enter sends to the target (inside the measurement table it still adds a row)
+    document.addEventListener('keydown', (e) => {
+        if (!target || !(e.ctrlKey || e.metaKey) || e.key !== 'Enter' || e.target.closest('#meas-body')) return;
+        e.preventDefault();
+        sendTo(target);
+    });
+
     $('to-q1').addEventListener('click', () => sendTo('q1'));
     $('to-q2').addEventListener('click', () => sendTo('q2'));
     $('copy').addEventListener('click', () => {
@@ -285,11 +300,15 @@
             navigator.clipboard.writeText(ta.value).then(done, () => { ta.select(); document.execCommand('copy'); done(); });
         } else { ta.select(); document.execCommand('copy'); done(); }
     });
+    // "← Q1" / "← Q2": load the calculator's model of the target (Q1 when no target)
+    const baseQ = target || 'q1';
+    $('base-q1').textContent = '← ' + baseQ.toUpperCase();
+    $('base-q1').title = "use the calculator's " + baseQ.toUpperCase() + ' model';
     $('base-q1').addEventListener('click', () => {
         try {
             const d = JSON.parse(localStorage.getItem(CALC_KEY) || 'null');
-            if (d && d['q1-model']) { $('fit-base').value = d['q1-model']; schedule(0); }
-            else setStatus('計算機側の Q1 モデルが無い', true);
+            if (d && d[baseQ + '-model']) { $('fit-base').value = d[baseQ + '-model']; schedule(0); }
+            else setStatus('計算機側の ' + baseQ.toUpperCase() + ' モデルが無い', true);
         } catch (e) { /* ignore */ }
     });
 
@@ -321,6 +340,13 @@
     $('base-box').addEventListener('toggle', save);
 
     load();
+    if (target) {
+        // base model defaults to the target transistor's current model text
+        try {
+            const d = JSON.parse(localStorage.getItem(CALC_KEY) || 'null');
+            if (d && typeof d[target + '-model'] === 'string' && d[target + '-model'].trim()) $('fit-base').value = d[target + '-model'];
+        } catch (e) { /* ignore */ }
+    }
     body.querySelector('input').focus();
     run();
 })();

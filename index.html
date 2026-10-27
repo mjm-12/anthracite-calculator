@@ -74,12 +74,12 @@
 
             <div class="models" id="models">
                 <div class="model">
-                    <div class="mhead"><label for="q1-model">Q<sub>1</sub></label><button type="button" class="open" id="q1-param" title="edit SPICE parameters of Q1">param</button></div>
+                    <div class="mhead"><label for="q1-model">Q<sub>1</sub></label><button type="button" class="open" id="q1-param" title="edit SPICE parameters of Q1">param</button><a class="open" id="q1-fit" href="fit.html?q=1" title="estimate Q1 parameters from DC measurements">fit</a></div>
                     <textarea id="q1-model" rows="3" spellcheck="false">.MODEL 2SC8888-W NPN(IS=25.44f BF=380.43 NF=1.002 VAF=125.5 IKF=385m ISE=4.88f NE=1.35 BR=8.22 NR=1.01 VAR=18.5 IKR=180m ISC=32.5f NC=1.25 RB=12.8 IRB=50u RBM=2 RE=185m RC=880m CJE=15.32p VJE=0.75 MJE=0.34 CJC=5.12p VJC=0.55 MJC=0.32 FC=0.5 TF=445p XTF=8 VTF=12 ITF=300m TR=65n EG=1.11 XTI=3 XTB=1.5 Vceo=60 Icrating=150m mfg=virtual-transistor)</textarea>
                     <output class="parsed" id="q1-parsed"></output>
                 </div>
                 <div class="model">
-                    <div class="mhead"><label for="q2-model">Q<sub>2</sub></label><button type="button" class="open" id="q2-param" title="edit SPICE parameters of Q2">param</button></div>
+                    <div class="mhead"><label for="q2-model">Q<sub>2</sub></label><button type="button" class="open" id="q2-param" title="edit SPICE parameters of Q2">param</button><a class="open" id="q2-fit" href="fit.html?q=2" title="estimate Q2 parameters from DC measurements">fit</a></div>
                     <textarea id="q2-model" rows="3" spellcheck="false">.MODEL 2SC8888-W NPN(IS=25.44f BF=380.43 NF=1.002 VAF=125.5 IKF=385m ISE=4.88f NE=1.35 BR=8.22 NR=1.01 VAR=18.5 IKR=180m ISC=32.5f NC=1.25 RB=12.8 IRB=50u RBM=2 RE=185m RC=880m CJE=15.32p VJE=0.75 MJE=0.34 CJC=5.12p VJC=0.55 MJC=0.32 FC=0.5 TF=445p XTF=8 VTF=12 ITF=300m TR=65n EG=1.11 XTI=3 XTB=1.5 Vceo=60 Icrating=150m mfg=virtual-transistor)</textarea>
                     <output class="parsed" id="q2-parsed"></output>
                 </div>
@@ -89,7 +89,6 @@
                 <button type="button" class="open" id="csv-in" title="CSV import (Ctrl+O / drop a .csv)">import</button>
                 <button type="button" class="open" id="csv-out" title="CSV export (Ctrl+S)">export</button>
                 <button type="button" class="open" id="xfer" title="transfer result to the other mode (Ctrl+Enter)" disabled>→ R→I<sub>C</sub></button>
-                <a class="open" id="to-fit" href="fit.html" title="estimate SPICE parameters from DC measurements">fit</a>
                 <input type="file" id="csv-file" accept=".csv,text/csv" hidden>
             </div>
         </div>

@@ -362,3 +362,6 @@ a.open { display: inline-flex; align-items: center; height: 20px; text-decoratio
     .fit-plot { align-self: center; }
     .fit-in { overflow: auto; }
 }
+.open.target { color: var(--bg); background: var(--fg); border-color: var(--fg); }
+.mhead a.open { height: 20px; }
+.open.target:disabled { color: var(--bg); background: var(--rule); border-color: var(--rule); }
