@@ -143,9 +143,9 @@ section('2. Forward V_R:V_C:V_E (R_F computed) -> reverse round trip');
     console.log('  round trips: ' + ok + ' ok, ' + skipped + ' forward-impossible');
     check(ok >= 20, 'enough V_E round trips');
     const bad = [
-        [{ veRatio: 0.01 }, /V_E が小さすぎる/],
+        [{ veRatio: 0.01 }, /V_E2 が小さすぎる/],
         [{ veRatio: 0.2, Rbc1: 1e5 }, /R_BC1 の電流が I_B1 を超える/],
-        [{ veRatio: -1 }, /V_E の比/],
+        [{ veRatio: -1 }, /V_E2 の比/],
     ];
     for (const [x, re] of bad) {
         let msg = '';
