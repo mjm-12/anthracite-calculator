@@ -73,6 +73,16 @@
             Rb: reqNonNeg(optDefault(p.Rb, 0), label + ' RB'),
             Re: reqNonNeg(optDefault(p.Re, 0), label + ' RE'),
             Rc: reqNonNeg(optDefault(p.Rc, 0), label + ' RC'),
+            // Capacitances (AC sweep only). SPICE defaults.
+            Cje: reqNonNeg(optDefault(p.Cje, 0), label + ' CJE'),
+            Vje: reqPos(optDefault(p.Vje, 0.75), label + ' VJE'),
+            Mje: reqNonNeg(optDefault(p.Mje, 0.33), label + ' MJE'),
+            Cjc: reqNonNeg(optDefault(p.Cjc, 0), label + ' CJC'),
+            Vjc: reqPos(optDefault(p.Vjc, 0.75), label + ' VJC'),
+            Mjc: reqNonNeg(optDefault(p.Mjc, 0.33), label + ' MJC'),
+            Fc: reqNonNeg(optDefault(p.Fc, 0.5), label + ' FC'),
+            Tf: reqNonNeg(optDefault(p.Tf, 0), label + ' TF'),
+            Tr: reqNonNeg(optDefault(p.Tr, 0), label + ' TR'),
         };
     }
 
@@ -174,7 +184,20 @@
             gIcBc: ditbc - gbc / p.Br - gbcn,
             gIbBe: gbe / p.Bf + gben,
             gIbBc: gbc / p.Br + gbcn,
+            // For the diffusion capacitances (SPICE3/ngspice, XTF = 0):
+            // gTf = d(cbe/qb)/dvbe for vbe > 0, else gbe; gbc0 = d(cbc)/dvbc
+            gTf: vbe > 0 ? (gbe - (cbe / qb) * dqbbe) / qb : gbe,
+            gbc0: gbc,
         };
+    }
+
+    // Depletion capacitance as in SPICE: C0 (1 - v/VJ)^-M below FC VJ,
+    // linear extension above it.
+    function depletionCap(v, C0, Vj, M, Fc) {
+        if (!(C0 > 0)) return 0;
+        if (v < Fc * Vj) return C0 * Math.pow(1 - v / Vj, -M);
+        const f2 = Math.pow(1 - Fc, 1 + M), f3 = 1 - Fc * (1 + M);
+        return C0 / f2 * (f3 + M * v / Vj);
     }
 
     // Operating region from the model itself.
@@ -198,10 +221,16 @@
     //   g_pi = dIB/dVbe, g_mu = dIB/dVbc, g_m = dIC/dVbe, g_x = dIC/dVbc,
     //   g_o = -g_x (output conductance), beta_ac = g_m/g_pi,
     //   rie = RB + 1/g_pi (small-signal input resistance, RE not included).
+    // Capacitances at the operating point (all on the internal nodes, XCJC = 1):
+    //   Cbe = Cje(vbe) + TF gTf,   Cbc = Cjc(vbc) + TR gbc0
     function makeQ(d, p) {
         const gpi = d.gIbBe, gmu = d.gIbBc, gm = d.gIcBe, gx = d.gIcBc;
         const go = -gx;
+        const Cje = depletionCap(d.vbe, p.Cje, p.Vje, p.Mje, p.Fc);
+        const Cjc = depletionCap(d.vbc, p.Cjc, p.Vjc, p.Mjc, p.Fc);
+        const Cdf = p.Tf * d.gTf, Cdr = p.Tr * d.gbc0;
         return {
+            Cje: Cje, Cjc: Cjc, Cdiff: Cdf, Cdiffr: Cdr, Cbe: Cje + Cdf, Cbc: Cjc + Cdr,
             Ic: d.Ic, Ib: d.Ib, Vbe: d.vbe, Vbc: d.vbc,
             hfe: d.Ic / d.Ib,
             gpi: gpi, gmu: gmu, gm: gm, gx: gx,
@@ -850,6 +879,242 @@
     }
 
     // ---------------------------------------------------------------
+    // Frequency response (complex nodal analysis)
+    // Network: v_s -- R_in -- C_in -- B1;  E2 -- C_E2 -- RV1 -- GND;
+    //          C2 -- C_out -- OUT -- RV2 -- GND (volume full up; output = OUT).
+    // Transistors: the same y-parameter model as analyzeAC on internal nodes
+    // b', c', e' (series RB/RC/RE when ohmic), plus Cbe (Cje + TF diffusion) between
+    // b'-e' and Cbc (Cjc + TR diffusion) between b'-c' (XCJC = 1).
+    // Optional external C_BC1 (B1-C1) and C_BC2 (C1-C2), outside RB/RC.
+    // Zin is the impedance seen by the source after R_in (looking into C_in).
+    // ---------------------------------------------------------------
+    function csolve(Ar, Ai, br, bi) {
+        const n = br.length;
+        const R = Ar.map((row, i) => row.slice().concat([br[i]]));
+        const I = Ai.map((row, i) => row.slice().concat([bi[i]]));
+        for (let k = 0; k < n; k++) {
+            let piv = k, best = -1;
+            for (let i = k; i < n; i++) {
+                const m = R[i][k] * R[i][k] + I[i][k] * I[i][k];
+                if (m > best) { best = m; piv = i; }
+            }
+            if (!(best > 0) || !isFinite(best)) return null;
+            [R[k], R[piv]] = [R[piv], R[k]];
+            [I[k], I[piv]] = [I[piv], I[k]];
+            const pr = R[k][k], pi = I[k][k], pd = pr * pr + pi * pi;
+            for (let i = k + 1; i < n; i++) {
+                const ar = R[i][k], ai = I[i][k];
+                if (ar === 0 && ai === 0) continue;
+                const fr = (ar * pr + ai * pi) / pd, fi = (ai * pr - ar * pi) / pd;   // M[i][k] / M[k][k]
+                for (let j = k; j <= n; j++) {
+                    const xr = R[k][j], xi = I[k][j];
+                    R[i][j] -= fr * xr - fi * xi;
+                    I[i][j] -= fr * xi + fi * xr;
+                }
+            }
+        }
+        const xr = new Array(n), xi = new Array(n);
+        for (let i = n - 1; i >= 0; i--) {
+            let sr = R[i][n], si = I[i][n];
+            for (let j = i + 1; j < n; j++) {
+                sr -= R[i][j] * xr[j] - I[i][j] * xi[j];
+                si -= R[i][j] * xi[j] + I[i][j] * xr[j];
+            }
+            const pr = R[i][i], pi = I[i][i], pd = pr * pr + pi * pi;
+            xr[i] = (sr * pr + si * pi) / pd;
+            xi[i] = (si * pr - sr * pi) / pd;
+        }
+        return [xr, xi];
+    }
+
+    // Admittance of R in series with C at angular frequency w, as [re, im];
+    // null means a short (R = 0 and C = infinity).
+    function seriesRC(R, C, w) {
+        if (R === Infinity || !(C > 0)) return [0, 0];
+        if (C === Infinity) return R > 0 ? [1 / R, 0] : null;
+        const zr = R, zi = -1 / (w * C), d = zr * zr + zi * zi;
+        return [zr / d, -zi / d];
+    }
+
+    // One frequency point. p: { R1, R2, R3, Rf, RV1, RV2, Rbc1, Rbc2, Cbc1, Cbc2,
+    //   Rin, Cin, Ce2, Cout, ohmic, q1:{gpi,gmu,gm,gx,Rb,Re,Rc,Cbe,Cbc}, q2 }
+    function acPoint(p, f) {
+        const w = 2 * Math.PI * f;
+        const B1 = 0, C1 = 1, E2 = 2, C2 = 3, GND = -1;
+        let nN = 4;
+        const st = [];                 // [a, b, gr, gi]: admittance between a and b
+        const rows = [];               // [row, col, value]: controlled-source entries (real)
+        const y = (a, b, gr, gi) => { if (gr !== 0 || gi !== 0) st.push([a, b, gr, gi]); };
+        const res = (a, b, R) => { if (R !== Infinity && R > 0) y(a, b, 1 / R, 0); };
+        const cap = (a, b, C) => { if (C > 0 && isFinite(C)) y(a, b, 0, w * C); };
+        const series = (ext, R) => {
+            if (!p.ohmic || !(R > 0)) return ext;
+            const n = nN++;
+            res(ext, n, R);
+            return n;
+        };
+        function transistor(Bx, Cx, Ex, q) {
+            const b = series(Bx, q.Rb), c = series(Cx, q.Rc), e = series(Ex, q.Re);
+            const ib = [[b, q.gpi + q.gmu], [e, -q.gpi], [c, -q.gmu]];
+            const ic = [[b, q.gm + q.gx], [e, -q.gm], [c, -q.gx]];
+            for (const [col, v] of ib) { rows.push([b, col, v]); rows.push([e, col, -v]); }
+            for (const [col, v] of ic) { rows.push([c, col, v]); rows.push([e, col, -v]); }
+            cap(b, e, q.Cbe);
+            cap(b, c, q.Cbc);
+        }
+
+        res(C1, GND, p.R1);
+        res(C2, GND, p.R2);
+        res(E2, GND, p.R3);
+        res(E2, B1, p.Rf);
+        res(B1, C1, p.Rbc1);
+        res(C1, C2, p.Rbc2);
+        cap(B1, C1, p.Cbc1);
+        cap(C1, C2, p.Cbc2);
+        const ye = seriesRC(p.RV1, p.Ce2, w);
+        if (ye === null) throw new Error('RV1 = 0 かつ C_E2 = ∞ は扱えない');
+        y(E2, GND, ye[0], ye[1]);
+        transistor(B1, C1, GND, p.q1);
+        transistor(C1, C2, E2, p.q2);
+
+        // Output: C2 -- Cout -- OUT -- RV2 (if RV2 is open, OUT simply follows C2)
+        let OUT;
+        if (p.Cout === Infinity) { OUT = C2; res(C2, GND, p.RV2); }
+        else { OUT = nN++; cap(C2, OUT, p.Cout); res(OUT, GND, p.RV2); }
+
+        // Source: vs = 1 V behind Rin + Cin, or directly at B1
+        const ys = seriesRC(p.Rin, p.Cin, w);
+        const direct = (ys === null);
+        let S = -1;
+        if (!direct) { S = nN++; y(S, B1, ys[0], ys[1]); }
+
+        const N = nN, F = direct ? B1 : S;
+        const Gr = [], Gi = [];
+        for (let i = 0; i < N; i++) { Gr.push(new Array(N).fill(0)); Gi.push(new Array(N).fill(0)); }
+        const add = (r, c, vr, vi) => { if (r >= 0 && c >= 0) { Gr[r][c] += vr; Gi[r][c] += vi; } };
+        for (const [a, b, gr, gi] of st) { add(a, a, gr, gi); add(b, b, gr, gi); add(a, b, -gr, -gi); add(b, a, -gr, -gi); }
+        for (const [r, c, v] of rows) add(r, c, v, 0);
+
+        const idx = [];
+        for (let i = 0; i < N; i++) if (i !== F) idx.push(i);
+        const sol = csolve(idx.map(i => idx.map(j => Gr[i][j])), idx.map(i => idx.map(j => Gi[i][j])),
+            idx.map(i => -Gr[i][F]), idx.map(i => -Gi[i][F]));
+        if (!sol) throw new Error('小信号回路の行列が特異 (f = ' + f + ' Hz)');
+        const vr = new Array(N).fill(0), vi = new Array(N).fill(0);
+        vr[F] = 1;
+        idx.forEach((nd, k) => { vr[nd] = sol[0][k]; vi[nd] = sol[1][k]; });
+
+        let zr, zi;
+        if (direct) {
+            let ir = 0, ii = 0;
+            for (let j = 0; j < N; j++) { ir += Gr[B1][j] * vr[j] - Gi[B1][j] * vi[j]; ii += Gr[B1][j] * vi[j] + Gi[B1][j] * vr[j]; }
+            const d = ir * ir + ii * ii;
+            zr = ir / d; zi = -ii / d;
+        } else {
+            // i_in = ys (1 - vB1); Z_B1 = vB1 / i_in; Zin = Z_B1 + 1/(jw Cin)
+            const dr = 1 - vr[B1], di = -vi[B1];
+            const ir = ys[0] * dr - ys[1] * di, ii = ys[0] * di + ys[1] * dr;
+            const d = ir * ir + ii * ii;
+            zr = (vr[B1] * ir + vi[B1] * ii) / d;
+            zi = (vi[B1] * ir - vr[B1] * ii) / d;
+            if (isFinite(p.Cin)) zi -= 1 / (w * p.Cin);
+        }
+        return { avr: vr[OUT], avi: vi[OUT], zr: zr, zi: zi };
+    }
+
+    // -3 dB crossing between sweep points i and i+1, interpolated in log f.
+    function crossAt(f, dB, i, level) {
+        const t = (level - dB[i]) / (dB[i + 1] - dB[i]);
+        return Math.pow(10, Math.log10(f[i]) + t * (Math.log10(f[i + 1]) - Math.log10(f[i])));
+    }
+
+    // acSweep(inputs, opts) or acSweep(result, inputs, opts) with result = evaluate(inputs).
+    // opts: { fStart = 10, fStop = 1e6, n = 200 } (log-spaced).
+    function acSweep(a, b, c) {
+        let r, inputs, opts;
+        if (a && a.ac && a.q1 && a.q1.ss) { r = a; inputs = b || {}; opts = c || {}; }
+        else { inputs = a; opts = b || {}; r = evaluate(inputs); }
+        const fStart = optDefault(opts.fStart, 10), fStop = optDefault(opts.fStop, 1e6);
+        const n = Math.max(2, Math.round(optDefault(opts.n, 200)));
+        reqPos(fStart, 'fStart'); reqPos(fStop, 'fStop');
+        if (!(fStop > fStart)) throw new Error('fStop は fStart より大きくする');
+        const capIn = (v, d, label) => reqPosOrInf(optDefault(v, d), label);
+        const p = {
+            R1: r.R1, R2: r.R2, R3: r.R3, Rf: r.Rf,
+            RV1: reqPosOrInf(inputs.RV1, 'RV1'), RV2: reqPosOrInf(optDefault(inputs.RV2, Infinity), 'RV2'),
+            Rbc1: reqPosOrInf(optDefault(inputs.Rbc1, Infinity), 'R_BC1'),
+            Rbc2: reqPosOrInf(optDefault(inputs.Rbc2, Infinity), 'R_BC2'),
+            Cbc1: reqNonNeg(optDefault(inputs.Cbc1, 0), 'C_BC1'),
+            Cbc2: reqNonNeg(optDefault(inputs.Cbc2, 0), 'C_BC2'),
+            Rin: reqNonNeg(optDefault(inputs.Rin, 1000), 'R_in'),
+            Cin: capIn(inputs.Cin, 1e-6, 'C_in'),
+            Ce2: capIn(inputs.Ce2, 20e-6, 'C_E2'),
+            Cout: capIn(inputs.Cout, 10e-9, 'C_out'),
+            ohmic: optDefault(inputs.acOhmic, true) !== false,
+            q1: r.q1.ss, q2: r.q2.ss,
+        };
+        const fr = [], mag = [], dB = [], ph = [], zm = [], zp = [];
+        const deg = 180 / Math.PI;
+        let prevPh = null;
+        for (let i = 0; i < n; i++) {
+            const f = fStart * Math.pow(fStop / fStart, i / (n - 1));
+            const x = acPoint(p, f);
+            const m = Math.hypot(x.avr, x.avi);
+            let phase = Math.atan2(x.avi, x.avr) * deg;
+            if (prevPh !== null) {               // unwrap
+                while (phase - prevPh > 180) phase -= 360;
+                while (phase - prevPh < -180) phase += 360;
+            }
+            prevPh = phase;
+            fr.push(f); mag.push(m); dB.push(20 * Math.log10(m)); ph.push(phase);
+            zm.push(Math.hypot(x.zr, x.zi)); zp.push(Math.atan2(x.zi, x.zr) * deg);
+        }
+        // Reference: the real mid-band A_vS (coupling capacitors shorted, transistor
+        // capacitances ignored) from analyzeAC. The -3 dB points are the outermost
+        // crossings of (reference - 3.01 dB): f_L is where the response first rises above
+        // the level coming from fStart, f_H where it last falls below it before fStop.
+        // Peaks and dips between them (LF peaking in the R_F / C_E2 / C_in loop is
+        // physical and appears in LTspice too) do not move f_L or f_H.
+        const refDB = r.ac.AvSdB;
+        let k = 0;
+        for (let i = 1; i < n; i++) if (dB[i] > dB[k]) k = i;
+        // Phase: shift the unwrapped curve so that it lies in (-180, 180] at the point
+        // closest to the reference level inside the band (non-inverting amplifier: ~0 deg).
+        let kRef = k, best = Infinity;
+        for (let i = 0; i < n; i++) {
+            const d = Math.abs(dB[i] - refDB);
+            if (d < best) { best = d; kRef = i; }
+        }
+        const shift = 360 * Math.round(ph[kRef] / 360);
+        if (shift !== 0) for (let i = 0; i < n; i++) ph[i] -= shift;
+
+        const level = refDB - 10 * Math.log10(2);
+        let iLo = -1, iHi = -1;
+        for (let i = 0; i < n; i++) if (dB[i] >= level) { iLo = i; break; }
+        for (let i = n - 1; i >= 0; i--) if (dB[i] >= level) { iHi = i; break; }
+        const f3dB = { low: null, high: null, lowFlag: null, highFlag: null };
+        if (iLo < 0) {
+            f3dB.lowFlag = f3dB.highFlag = 'noBand';      // never reaches reference - 3 dB
+        } else {
+            if (iLo === 0) f3dB.lowFlag = '<fStart';
+            else f3dB.low = crossAt(fr, dB, iLo - 1, level);
+            if (iHi === n - 1) f3dB.highFlag = '>fStop';
+            else f3dB.high = crossAt(fr, dB, iHi, level);
+        }
+        const peakDB = dB[k] - refDB;
+        return {
+            f: fr,
+            AvS: { mag: mag, dB: dB, phaseDeg: ph },
+            Zin: { mag: zm, phaseDeg: zp },
+            f3dB: f3dB,
+            midbandDB: refDB,
+            maxDB: dB[k], fMax: fr[k],
+            peak: peakDB > 1 ? { dB: peakDB, f: fr[k] } : null,
+            result: r,
+        };
+    }
+
+    // ---------------------------------------------------------------
     // Assemble the public result object
     // ---------------------------------------------------------------
     function assemble(sol, mode) {
@@ -866,7 +1131,8 @@
         const tq = (q, Vce) => ({
             Vbe: q.Vbe, Vbc: q.Vbc, Vce: Vce, Ib: q.Ib, hfe: q.hfe, rie: q.rie,
             beta_ac: q.beta_ac, gm: q.gm, ro: q.ro, region: q.region,
-            ss: { gpi: q.gpi, gmu: q.gmu, gm: q.gm, gx: q.gx, Rb: q.Rb, Re: q.Re, Rc: q.Rc },
+            caps: { Cje: q.Cje, Cjc: q.Cjc, Cdiff: q.Cdiff, Cdiffr: q.Cdiffr },
+            ss: { gpi: q.gpi, gmu: q.gmu, gm: q.gm, gx: q.gx, Rb: q.Rb, Re: q.Re, Rc: q.Rc, Cbe: q.Cbe, Cbc: q.Cbc },
         });
         return {
             mode: mode,
@@ -914,6 +1180,8 @@
         solveForward: solveForward,
         solveReverse: solveReverse,
         analyzeAC: analyzeAC,
+        acSweep: acSweep,
+        _acPoint: acPoint,
         kclResiduals: kclResiduals,
         // internal, exported for tests
         _normalizeCommon: normalizeCommon,

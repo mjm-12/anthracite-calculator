@@ -9,7 +9,7 @@
     const status = $('status');
     const STORE_KEY = 'ffop.inputs.v2';
 
-    const FIELD_IDS = ['vcc', 'rf', 'vt', 'rv1', 'rv2', 'rin',
+    const FIELD_IDS = ['vcc', 'rf', 'vt', 'rv1', 'rv2', 'rin', 'cin', 'ce2', 'cout', 'fstart', 'fstop',
         'ic1', 'ic2', 'vr-ratio', 'vc-ratio', 've-ratio',
         'r1', 'r2', 'r3', 'q1-model', 'q2-model'];
 
@@ -57,8 +57,9 @@
 
     // R_BC: OPEN pressed -> Infinity; otherwise the field is required
     function bc(id) {
-        if (isOpen(id)) { $(id).classList.remove('bad'); return Infinity; }
-        return num(id, { positive: true });
+        const cap = id.charAt(0) === 'c';     // C_BC: OPEN = absent = 0 F; R_BC: OPEN = ∞
+        if (isOpen(id)) { $(id).classList.remove('bad'); return cap ? 0 : Infinity; }
+        return num(id, cap ? { positive: true, finite: true } : { positive: true });
     }
 
     // ---------- R_F: input, or computed when V_E ratio is given (forward) ----------
@@ -134,8 +135,13 @@
             RV1: num('rv1', { positive: true }),
             RV2: num('rv2', { positive: true }),
             Rin: num('rin', { nonneg: true, finite: true }),
+            Cin: num('cin', { positive: true, finite: true }),
+            Ce2: num('ce2', { positive: true, finite: true }),
+            Cout: num('cout', { positive: true, finite: true }),
             Rbc1: bc('rbc1'),
             Rbc2: bc('rbc2'),
+            Cbc1: bc('cbc1'),
+            Cbc2: bc('cbc2'),
             q1: model('q1'),
             q2: model('q2'),
         };
@@ -260,6 +266,7 @@
         out.innerHTML = h;
         out.classList.remove('stale');
         $('xfer').disabled = false;
+        if (typeof bodeRefresh === 'function') bodeRefresh(r, inp);
 
         const s = r.solver;
         status.className = 'status';
@@ -331,6 +338,7 @@
     }
 
     function labelOf(el) {
+        if (el.dataset.lbl) return el.dataset.lbl;
         const l = form.querySelector('label[for="' + el.id + '"]');
         return l ? l.textContent.trim() : el.id;
     }
@@ -396,9 +404,9 @@
     // Pressed: R_BC = ∞, the field is read-only and shows ∞; the typed value is
     // kept and comes back on release. Typing / stepping in the field releases it.
     // Released with an empty field = invalid (accent border), not silently re-opened.
-    const BC_IDS = ['rbc1', 'rbc2'];
-    const kept = { rbc1: '', rbc2: '' };
-    const SCHEM = { '00': 'schematic.svg', '10': 'schematic_o1.svg', '01': 'schematic_o2.svg', '11': 'schematic_o12.svg' };
+    // C_BC: same OPEN semantics; OPEN = capacitor absent (0 F).
+    const BC_IDS = ['rbc1', 'rbc2', 'cbc1', 'cbc2'];
+    const kept = { rbc1: '', rbc2: '', cbc1: '', cbc2: '' };
     const schemImg = $('schematic');
 
     function isOpen(id) { return $(id + '-open').getAttribute('aria-pressed') === 'true'; }
@@ -415,16 +423,16 @@
         updateSchematic();
     }
 
-    function updateSchematic() {
-        const key = (isOpen('rbc1') ? '1' : '0') + (isOpen('rbc2') ? '1' : '0');
-        const src = SCHEM[key];
-        if (schemImg.getAttribute('src') !== src) schemImg.setAttribute('src', src);
+    // Schematic layers: each optional branch is its own image, faint when OPEN (absent)
+    for (const im of document.querySelectorAll('.schematic .layer')) {
+        im.addEventListener('error', () => { im.hidden = true; });
+        if (im.complete && im.naturalWidth === 0) im.hidden = true;
     }
-    // Missing variant -> fall back to the plain schematic
-    schemImg.addEventListener('error', () => {
-        if (schemImg.getAttribute('src') !== 'schematic.svg') schemImg.setAttribute('src', 'schematic.svg');
-    });
-    for (const f of Object.values(SCHEM)) { const im = new Image(); im.src = f; }
+    function updateSchematic() {
+        for (const im of document.querySelectorAll('.schematic .layer')) {
+            im.style.opacity = isOpen(im.dataset.for) ? '0.25' : '1';
+        }
+    }
     // Drawing aspect -> CSS --ar (box sized tight to the drawing; no hard-coded ratio)
     function setAspect() {
         if (schemImg.naturalWidth > 0 && schemImg.naturalHeight > 0) {
@@ -510,11 +518,14 @@
     const CSV_PARAMS = [
         ['mode', 'mode', ''], ['rfmode', 'rfmode', ''],
         ['vcc', 'vcc', 'V'], ['rf', 'rf', 'Ω'], ['rv1', 'rv1', 'Ω'], ['rv2', 'rv2', 'Ω'], ['rin', 'rin', 'Ω'],
+        ['cin', 'cin', 'F'], ['ce2', 'ce2', 'F'], ['cout', 'cout', 'F'],
         ['ic1', 'ic1', 'A'], ['ic2', 'ic2', 'A'],
         ['vr', 'vr-ratio', ''], ['vc', 'vc-ratio', ''], ['ve', 've-ratio', ''],
         ['r1', 'r1', 'Ω'], ['r2', 'r2', 'Ω'], ['r3', 'r3', 'Ω'],
         ['rbc1_open', 'rbc1-open', ''], ['rbc1', 'rbc1', 'Ω'],
         ['rbc2_open', 'rbc2-open', ''], ['rbc2', 'rbc2', 'Ω'],
+        ['cbc1_open', 'cbc1-open', ''], ['cbc1', 'cbc1', 'F'],
+        ['cbc2_open', 'cbc2-open', ''], ['cbc2', 'cbc2', 'F'],
         ['vt', 'vt', 'V'], ['q1_model', 'q1-model', ''], ['q2_model', 'q2-model', ''],
     ];
 
@@ -660,6 +671,159 @@
     }
     $('xfer').addEventListener('click', transfer);
 
+    // ---------- Bode dialog ----------
+    const bdlg = $('bdlg'), bplot = $('bplot');
+
+    function openBode() {
+        bdlg.showModal();
+        $('cin').focus();
+        clearTimeout(timer);
+        compute();
+        if (!last) drawBode(null);
+    }
+
+    // called from render() after every successful evaluation
+    function bodeRefresh(r, inp) {
+        if (bdlg.open) drawBode({ r: r, inp: inp });
+    }
+
+    bdlg.addEventListener('input', () => schedule());
+    bdlg.addEventListener('keydown', (e) => {
+        const el = e.target;
+        if (el.tagName === 'INPUT' && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey) {
+            if (stepValue(el, e.key === 'ArrowUp' ? 1 : -1)) { e.preventDefault(); schedule(0); }
+        } else if (e.key === 'Enter' && el.tagName === 'INPUT') { e.preventDefault(); schedule(0); }
+    });
+    $('bform').addEventListener('submit', (e) => e.preventDefault());
+    $('bclose').addEventListener('click', () => bdlg.close());
+    $('bode-btn').addEventListener('click', openBode);
+    bdlg.addEventListener('close', () => $('bode-btn').focus());
+    window.addEventListener('resize', () => { if (bdlg.open && last) drawBode({ r: last.res, inp: last.inp }); });
+
+    function bodeRange() {
+        const a = parseEngineering($('fstart').value), b = parseEngineering($('fstop').value);
+        const ok = a > 0 && b > a && isFinite(b);
+        $('fstart').classList.toggle('bad', !(a > 0 && isFinite(a)));
+        $('fstop').classList.toggle('bad', !(b > 0 && isFinite(b)) || (a > 0 && !(b > a)));
+        return ok ? { fStart: a, fStop: b } : null;
+    }
+
+    function drawBode(st) {
+        const msg = $('bmsg'), sum = $('bsum');
+        if (!st) { msg.textContent = status.textContent; bplot.innerHTML = ''; sum.innerHTML = ''; return; }
+        const rg = bodeRange();
+        if (!rg) { msg.textContent = '入力値が不正: f'; return; }
+        if (typeof FFEngine.acSweep !== 'function') { msg.textContent = 'engine に acSweep が無い'; return; }
+        let sw;
+        try {
+            sw = FFEngine.acSweep(st.inp, { fStart: rg.fStart, fStop: rg.fStop, n: 241 });
+        } catch (e) { msg.textContent = e && e.message ? e.message : String(e); return; }
+        const r = st.r;
+        const inactive = [r.q1, r.q2].some((q) => q && q.region && q.region !== 'active');
+        msg.textContent = inactive ? (r.warnings || []).join(' / ') : '';
+        const f3 = sw.f3dB || {};
+        const pk = sw.peak;
+        sum.innerHTML =
+            '<dt>A<sub>vs</sub> mid</dt><dd>' + (isFinite(sw.midbandDB) ? sw.midbandDB.toFixed(1) + ' dB' : '–') + '</dd>' +
+            '<dt>f<sub>L</sub></dt><dd>' + fEdge(f3.low, f3.lowFlag, rg) + '</dd>' +
+            '<dt>f<sub>H</sub></dt><dd>' + fEdge(f3.high, f3.highFlag, rg) + '</dd>' +
+            (pk && isFinite(pk.dB)   // peak.dB is relative to the mid-band level
+                ? '<dt>peak</dt><dd>' + (pk.dB >= 0 ? '+' : '−') + Math.abs(pk.dB).toFixed(1) +
+                  ' dB @ ' + formatSI(pk.f, 'Hz', 3) + '</dd>' : '');
+        plotBode(sw, rg);
+    }
+
+    const fHz = (v) => (v > 0 && isFinite(v) ? formatSI(v, 'Hz', 3) : '–');
+    // -3 dB edge with the engine's flag: below / above the sweep range, or no band at all
+    function fEdge(v, flag, rg) {
+        if (v > 0 && isFinite(v)) return fHz(v);
+        if (flag === '<fStart') return '&lt; ' + fHz(rg.fStart);
+        if (flag === '>fStop') return '&gt; ' + fHz(rg.fStop);
+        return '—';
+    }
+
+    function niceStep(span, target) {
+        const raw = span / target, e = Math.pow(10, Math.floor(Math.log10(raw)));
+        for (const m of [1, 2, 2.5, 5, 10]) if (m * e >= raw) return m * e;
+        return 10 * e;
+    }
+
+    function plotBode(sw, rg) {
+        const box = bplot.getBoundingClientRect();
+        const W = Math.max(300, Math.round(box.width)), H = Math.max(200, Math.round(box.height));
+        bplot.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        const L = 52, R = 16, T = 8, B = 26, GAP = 18;
+        const hTop = Math.round((H - T - B - GAP) * 0.62), hBot = H - T - B - GAP - hTop;
+        const top = { y0: T, y1: T + hTop }, bot = { y0: T + hTop + GAP, y1: H - B };
+        const lx0 = Math.log10(rg.fStart), lx1 = Math.log10(rg.fStop);
+        const X = (f) => L + (Math.log10(f) - lx0) / (lx1 - lx0) * (W - L - R);
+        const f = sw.f || [], dB = (sw.AvS && sw.AvS.dB) || [], ph = (sw.AvS && sw.AvS.phaseDeg) || [];
+        const fin = (a) => a.filter((v) => isFinite(v));
+        // dB range: 10 dB grid, at most ~80 dB below the peak
+        let dmax = Math.max.apply(null, fin(dB).concat([0, isFinite(sw.midbandDB) ? sw.midbandDB : 0])), dmin = Math.min.apply(null, fin(dB).concat([dmax - 10]));
+        dmax = Math.ceil(dmax / 10) * 10; dmin = Math.max(Math.floor(dmin / 10) * 10, dmax - 80);
+        const dstep = niceStep(dmax - dmin, 5);
+        let pmax = Math.max.apply(null, fin(ph).concat([0])), pmin = Math.min.apply(null, fin(ph).concat([0]));
+        pmax = Math.ceil(pmax / 45) * 45; pmin = Math.floor(pmin / 45) * 45;
+        if (pmax - pmin < 90) { pmax += 45; pmin -= 45; }
+        const pstep = (pmax - pmin) > 180 ? 90 : 45;
+        const Yd = (v) => top.y0 + (dmax - Math.min(Math.max(v, dmin), dmax)) / (dmax - dmin) * (top.y1 - top.y0);
+        const Yp = (v) => bot.y0 + (pmax - Math.min(Math.max(v, pmin), pmax)) / (pmax - pmin) * (bot.y1 - bot.y0);
+        let s = '';
+        // vertical decade grid (both panels) + labels
+        for (let d = Math.ceil(lx0); d <= Math.floor(lx1); d++) {
+            const x = X(Math.pow(10, d)).toFixed(1);
+            s += '<line class="g" x1="' + x + '" y1="' + top.y0 + '" x2="' + x + '" y2="' + top.y1 + '"/>';
+            s += '<line class="g" x1="' + x + '" y1="' + bot.y0 + '" x2="' + x + '" y2="' + bot.y1 + '"/>';
+            s += '<text class="t" x="' + x + '" y="' + (H - 8) + '" text-anchor="middle">' + formatSI(Math.pow(10, d), 'Hz', 1) + '</text>';
+        }
+        for (let v = dmin; v <= dmax + 1e-9; v += dstep) {
+            const y = Yd(v).toFixed(1);
+            s += '<line class="g" x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '"/>';
+            s += '<text class="t" x="' + (L - 6) + '" y="' + (+y + 4) + '" text-anchor="end">' + Math.round(v) + '</text>';
+        }
+        for (let v = pmin; v <= pmax + 1e-9; v += pstep) {
+            const y = Yp(v).toFixed(1);
+            s += '<line class="g" x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '"/>';
+            s += '<text class="t" x="' + (L - 6) + '" y="' + (+y + 4) + '" text-anchor="end">' + Math.round(v) + '°</text>';
+        }
+        s += '<rect class="ax" x="' + L + '" y="' + top.y0 + '" width="' + (W - L - R) + '" height="' + (top.y1 - top.y0) + '"/>';
+        s += '<rect class="ax" x="' + L + '" y="' + bot.y0 + '" width="' + (W - L - R) + '" height="' + (bot.y1 - bot.y0) + '"/>';
+        s += '<text class="t" x="' + (L + 6) + '" y="' + (top.y0 + 14) + '">|A<tspan dy="3" font-size="8">vs</tspan><tspan dy="-3">| dB</tspan></text>';
+        s += '<text class="t" x="' + (L + 6) + '" y="' + (bot.y0 + 14) + '">∠A<tspan dy="3" font-size="8">vs</tspan></text>';
+        const line = (ys, Y) => {
+            let d = '', pen = false;
+            for (let i = 0; i < f.length; i++) {
+                if (!(f[i] > 0) || !isFinite(ys[i])) { pen = false; continue; }
+                d += (pen ? 'L' : 'M') + X(f[i]).toFixed(1) + ',' + Y(ys[i]).toFixed(1);
+                pen = true;
+            }
+            return d;
+        };
+        // reference: mid-band level (dashed) and its -3 dB level (faint)
+        if (isFinite(sw.midbandDB)) {
+            for (const [v, cls] of [[sw.midbandDB, 'ref'], [sw.midbandDB - 3, 'ref3']]) {
+                if (v < dmin || v > dmax) continue;
+                const y = Yd(v).toFixed(1);
+                s += '<line class="' + cls + '" x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '"/>';
+            }
+        }
+        s += '<path class="l" d="' + line(dB, Yd) + '"/>';
+        s += '<path class="l" d="' + line(ph, Yp) + '"/>';
+        // -3 dB markers
+        const f3 = sw.f3dB || {};
+        for (const [k, lbl] of [['low', 'f<tspan dy="3" font-size="8">L</tspan>'], ['high', 'f<tspan dy="3" font-size="8">H</tspan>']]) {
+            const v = f3[k];
+            if (!(v >= rg.fStart && v <= rg.fStop)) continue;
+            const x = X(v).toFixed(1);
+            s += '<line class="mk" x1="' + x + '" y1="' + top.y0 + '" x2="' + x + '" y2="' + bot.y1 + '"/>';
+            const right = X(v) < (L + W - R) / 2;
+            s += '<text class="mt" x="' + (+x + (right ? 4 : -4)) + '" y="' + (k === 'low' ? top.y1 - 6 : top.y0 + 30) + '" text-anchor="' + (right ? 'start' : 'end') + '">' +
+                lbl + '<tspan dy="-3"> ' + formatSI(v, 'Hz', 3) + '</tspan></text>';
+        }
+        bplot.innerHTML = s;
+    }
+
     // ---------- SPICE parameter dialog ----------
     // Edits KEY=value tokens of the model text on apply; the text stays the source of truth.
     const PFIELDS = [
@@ -763,6 +927,12 @@
 
     document.addEventListener('keydown', (e) => {
         if (document.getElementById('pdlg').open) return;
+        if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyB' || e.key === 'b' || e.key === 'B')) {
+            e.preventDefault();
+            if ($('bdlg').open) $('bdlg').close(); else openBode();
+            return;
+        }
+        if ($('bdlg').open) return;
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); exportCsv(); return; }
         if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); transfer(); return; }
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); $('csv-file').click(); return; }

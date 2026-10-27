@@ -1,4 +1,4 @@
-"""Fuzz Face (classic output) + base-collector resistors R_BC1 / R_BC2.
+"""Fuzz Face (classic output) + optional base-collector R_BC1/R_BC2 and C_BC1/C_BC2.
 
 Schematic for the web calculator (schematic.svg at repo root).
 Text is emitted as SVG paths (svg.fonttype='path'), so no font install is needed.
@@ -87,30 +87,44 @@ class Pot(Res):
 
 # =========================
 RL = 1.3   # vertical resistor length
-GREY = '#c4c4c4'   # colour of an R_BC branch that is switched OPEN
+# Larger-plate capacitor (stock plates x1.25) whose length can be set with .tox()
+capgap, caph = 0.225, 0.3125
+NAN = (float('nan'), float('nan'))
 
 
-def draw(open1=False, open2=False):
-    """Return the drawing. open1/open2 grey out the R_BC1/R_BC2 branch
-    (resistor, label, riser wire, and the dots that stop being junctions).
-    Only colours change, so every variant has the same bounding box."""
-    c1 = GREY if open1 else 'black'
-    c2 = GREY if open2 else 'black'
-    z1 = 5 if open1 else None   # grey dots on top of the black wire they sit on
-    z2 = 5 if open2 else None
+class Cap(elm.Element2Term):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.segments.append(Segment([(0, 0), NAN, (0, caph), (0, -caph), NAN,
+                                      (capgap, caph), (capgap, -caph), NAN, (capgap, 0)]))
+
+
+# Layers: the UI stacks these SVGs. Every file draws the whole circuit, but
+# elements outside the file's layer get a fully transparent colour, so all files share one
+# bounding box (identical viewBox) and line up exactly when stacked.
+LAYERS = ['base', 'rbc1', 'rbc2', 'cbc1', 'cbc2']
+
+
+def draw(layer='full'):
+    def col(name):
+        return 'black' if layer in ('full', name) else '#00000000'   # fully transparent
+    cb, r1, r2, k1, k2 = (col(n) for n in LAYERS)
+
     with schemdraw.Drawing(show=False) as d:
-        d.config(fontsize=font_size, font=font_name, lw=1)
+        d.config(fontsize=font_size, font=font_name, lw=1, color=cb)
 
         # --- source v_s + R_in / Q1 base ------------------------------------
         Vs = elm.SourceSin().down(1.8).label('$v_s$')
         elm.GroundSignal(lead=False)
         elm.Line().right(0.3).at(Vs.start)
-        Rin = Res().right(1.3).label('$R_{in}$', loc='top')
-        Cin = elm.Capacitor2(polar=True).reverse().right(1.5).label('$C_{in}$', loc='top').scale(1.25)
+        Res().right(1.3).label('$R_{in}$', loc='top')
+        elm.Capacitor2(polar=True).reverse().right(1.5).label('$C_{in}$', loc='top').scale(1.25)
         elm.Line().right(0.35)
-        nB1 = elm.Dot().label('$V_{B1}$', loc='bottom', color='black').color(c1).zorder(z1)     # R_BC1 leaves upward
+        nK1 = elm.Dot().color(k1)                           # C_BC1 leaves upward
+        elm.Line().right(0.6)
+        nR1 = elm.Dot().color(r1).label('$V_{B1}$', loc='bottom', color=cb)   # R_BC1 leaves upward
         elm.Line().right(0.8)
-        nB1b = elm.Dot()                                    # RF arrives from below
+        nRF = elm.Dot()                                     # RF arrives from below
         elm.Line().right(0.4)
         Q1 = elm.BjtNpn(circle=True).anchor('base').theta(0).label('$Q_1$', loc='right')
         elm.Line().down(.2).at(Q1.emitter)
@@ -120,59 +134,69 @@ def draw(open1=False, open2=False):
         elm.Line().up(0.45).at(Q1.collector)
         nC1 = elm.Dot().label('$V_{C1}$', loc='right', ofst=(0.05, -0.25))   # Q2 base wire leaves right
         elm.Line().up(0.75)
-        nC1t = elm.Dot().color(c1).zorder(z1)                                                     # R_BC1 lands from left
+        nR1t = elm.Dot().color(r1)                          # R_BC1 lands from left
+        elm.Line().up(1.1)
+        nK1t = elm.Dot().color(k1)                          # C_BC1 lands from left
         elm.Line().up(0.25)
-        R1 = Res().up(RL).label('$R_{1}$', loc='bottom')
+        Res().up(RL).label('$R_{1}$', loc='bottom')
         elm.Line().up(0.25)
         Vcc(lead=False).label('$V_{CC}$', loc='top')
 
-        # R_BC1: V_B1 -> up -> right to V_C1
-        elm.Line().up().at(nB1.center).toy(nC1t.center).color(c1)
-        RBC1 = Res().right().tox(nC1t.center).label('$R_{BC1}$', loc='top').color(c1)
+        # R_BC1 (inner) and C_BC1 (outer): V_B1 -> up -> right to V_C1
+        elm.Line().up().at(nR1.center).toy(nR1t.center).color(r1)
+        Res().right().tox(nR1t.center).label('$R_{BC1}$', loc='top').color(r1)
+        elm.Line().up().at(nK1.center).toy(nK1t.center).color(k1)
+        Cap().right().tox(nK1t.center).label('$C_{BC1}$', loc='top').color(k1)
 
         # --- Q2 -------------------------------------------------------------
-        elm.Line().right(0.95).at(nC1.center)
-        nC1r = elm.Dot().color(c2).zorder(z2)                                                     # R_BC2 leaves upward
-        elm.Line().right(0.65)
+        elm.Line().right(1.0).at(nC1.center)
+        nK2 = elm.Dot().color(k2)                           # C_BC2 leaves upward
+        elm.Line().right(1.0)
+        nR2 = elm.Dot().color(r2)                           # R_BC2 leaves upward
+        elm.Line().right(0.8)
         Q2 = elm.BjtNpn(circle=True).anchor('base').theta(0).label('$Q_2$', loc='right')
 
         elm.Line().up(0.75).at(Q2.collector)
-        nC2 = elm.Dot().label('$V_{C2}$', loc='right', ofst=(0.05, -0.3), color='black').color(c2).zorder(z2)   # R_BC2 lands from left
+        nR2t = elm.Dot().color(r2).label('$V_{C2}$', loc='right', ofst=(0.05, -0.3), color=cb)  # R_BC2 lands
         elm.Line().up(0.6)
-        nOut = elm.Dot()                     # V_C2 node: C_out leaves right
+        nOut = elm.Dot()                                    # C_out leaves right
+        elm.Line().up(0.6)
+        nK2t = elm.Dot().color(k2)                          # C_BC2 lands from left
         elm.Line().up(0.2)
-        R2 = Res().up(RL).label('$R_{2}$', loc='top')
+        Res().up(RL).label('$R_{2}$', loc='top')
         elm.Line().up(0.25)
         Vcc(lead=False).label('$V_{CC}$', loc='top')
 
-        # R_BC2: V_C1 -> up -> right to V_C2
-        elm.Line().up().at(nC1r.center).toy(nC2.center).color(c2)
-        RBC2 = Res().right().tox(nC2.center).label('$R_{BC2}$', loc='top').color(c2)
+        # R_BC2 (inner) and C_BC2 (outer): V_C1 -> up -> right to V_C2
+        elm.Line().up().at(nR2.center).toy(nR2t.center).color(r2)
+        Res().right().tox(nR2t.center).label('$R_{BC2}$', loc='top').color(r2)
+        elm.Line().up().at(nK2.center).toy(nK2t.center).color(k2)
+        Cap().right().tox(nK2t.center).label('$C_{BC2}$', loc='top').color(k2)
 
         # --- output: Cout -> RV2 ---------------------------------------------
-        Cout = elm.Capacitor().at(nOut.center).right(1.8).label('$C_{out}$', loc='top').scale(1.25)
+        elm.Capacitor().at(nOut.center).right(1.8).label('$C_{out}$', loc='top').scale(1.25)
         RV2 = Pot().down(1.6).label('$RV_{2}$', loc='bottom', ofst=(-.5, -.45))
         elm.GroundSignal(lead=False)
         elm.Line().at(RV2.tap).right(0.8)
-        elm.Dot(open=True).label('output', loc='right')
+        elm.Dot(open=True).fill('white' if cb == 'black' else '#00000000').label('output', loc='right')
 
         # --- Q2 emitter: V_E2, R3, CE2 + RV1 ---------------------------------
-        LE2 = elm.Line().down().at(Q2.emitter).toy(G1.end[1] - 0.45)
+        elm.Line().down().at(Q2.emitter).toy(G1.end[1] - 0.45)
         nE2 = elm.Dot().label('$V_{E2}$', loc='top', ofst=(-0.5, 0))
-        R3 = Res().down(RL).label('$R_{3}$', loc='top')
+        Res().down(RL).label('$R_{3}$', loc='top')
         elm.GroundSignal(lead=False)
 
-        CE2 = elm.Capacitor2(polar=True).at(nE2.center).right(1.6).label('$C_{E2}$', loc='top').scale(1.25)
-        nRV1 = elm.Dot()
+        elm.Capacitor2(polar=True).at(nE2.center).right(1.6).label('$C_{E2}$', loc='top').scale(1.25)
+        elm.Dot()
         RV1 = Pot().down(RL).label('$RV_{1}$', loc='top')
         elm.GroundSignal(lead=False)
         elm.Line().right().at(RV1.start).tox(RV1.tap)
         elm.Line().down().toy(RV1.tap)
 
         # --- RF: V_E2 -> V_B1 -------------------------------------------------
-        RF = Res().at(nE2.center).left(2.4).label('$R_{F}$', loc='top')
-        elm.Line().left().tox(nB1b.center)
-        elm.Line().up().toy(nB1b.center)
+        Res().at(nE2.center).left(2.4).label('$R_{F}$', loc='top')
+        elm.Line().left().tox(nRF.center)
+        elm.Line().up().toy(nRF.center)
 
     return d
 
@@ -183,13 +207,17 @@ image_dir = os.path.join(HERE, 'Images')
 repo_root = os.path.dirname(HERE)
 os.makedirs(image_dir, exist_ok=True)
 
-VARIANTS = [('', False, False), ('_o1', True, False),
-            ('_o2', False, True), ('_o12', True, True)]
-for suffix, o1, o2 in VARIANTS:
-    d = draw(o1, o2)
-    svg_path = os.path.join(image_dir, f'FuzzFace_bc{suffix}.svg')
-    png_path = os.path.join(image_dir, f'FuzzFace_bc{suffix}.png')
+# full drawing (reference / documentation)
+d = draw('full')
+d.save(os.path.join(image_dir, 'FuzzFace_bc.svg'), transparent=True)
+d.save(os.path.join(image_dir, 'FuzzFace_bc.png'), dpi=300, transparent=False)
+
+# layers: schematic.svg (base) + schematic_<layer>.svg
+for layer in LAYERS:
+    suffix = '' if layer == 'base' else f'_{layer}'
+    d = draw(layer)
+    svg_path = os.path.join(image_dir, f'FuzzFace_bc_layer_{layer}.svg')
     d.save(svg_path, transparent=True)
-    d.save(png_path, dpi=300, transparent=False)
+    d.save(os.path.join(image_dir, f'FuzzFace_bc_layer_{layer}.png'), dpi=300, transparent=True)
     shutil.copyfile(svg_path, os.path.join(repo_root, f'schematic{suffix}.svg'))
     print('saved', svg_path)

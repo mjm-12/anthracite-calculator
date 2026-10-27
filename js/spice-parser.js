@@ -22,10 +22,21 @@ const SPICE_DEFAULTS = {
     Ikf: 0,
     Ikr: 0,
     Rc: 0,
+    // Capacitances (used only by the AC sweep)
+    Cje: 0,
+    Vje: 0.75,
+    Mje: 0.33,
+    Cjc: 0,
+    Vjc: 0.75,
+    Mjc: 0.33,
+    Fc: 0.5,
+    Tf: 0,
+    Tr: 0,
 };
 
 const SPICE_KEYS = { Is: 'IS', Bf: 'BF', Nf: 'NF', Ise: 'ISE', Ne: 'NE', Rb: 'RB', Re: 'RE',
-    Br: 'BR', Nr: 'NR', Isc: 'ISC', Nc: 'NC', Vaf: 'VAF', Var: 'VAR', Ikf: 'IKF', Ikr: 'IKR', Rc: 'RC' };
+    Br: 'BR', Nr: 'NR', Isc: 'ISC', Nc: 'NC', Vaf: 'VAF', Var: 'VAR', Ikf: 'IKF', Ikr: 'IKR', Rc: 'RC',
+    Cje: 'CJE', Vje: 'VJE', Mje: 'MJE', Cjc: 'CJC', Vjc: 'VJC', Mjc: 'MJC', Fc: 'FC', Tf: 'TF', Tr: 'TR' };
 
 // Returns params with defaults; params.found lists keys read from the text,
 // params.bad lists keys whose value could not be parsed.
