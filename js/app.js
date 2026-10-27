@@ -22,6 +22,7 @@
         const mode = getMode();
         form.querySelector('.mode-forward').hidden = mode !== 'forward';
         form.querySelector('.mode-reverse').hidden = mode !== 'reverse';
+        $('xfer').innerHTML = mode === 'forward' ? '→ R→I<sub>C</sub>' : '→ I<sub>C</sub>→R';
     }
 
     function setMode(mode, focus) {
@@ -258,6 +259,7 @@
         }
         out.innerHTML = h;
         out.classList.remove('stale');
+        $('xfer').disabled = false;
 
         const s = r.solver;
         status.className = 'status';
@@ -293,6 +295,7 @@
         status.textContent = msg;
         flash = null;
         last = null;
+        $('xfer').disabled = true;
         out.classList.add('stale');
     }
 
@@ -620,6 +623,107 @@
     }
 
     $('csv-out').addEventListener('click', exportCsv);
+
+    // ---------- transfer the result to the other mode ----------
+    // forward -> reverse: R1..R3 (and a computed R_F) become inputs
+    // reverse -> forward: I_C1, I_C2 and V_R:V_C (normalised to V_C = 1) become targets; R_F mode
+    const sig6 = (v) => String(parseFloat(v.toPrecision(6)));
+    function transfer() {
+        clearTimeout(timer);
+        compute();
+        if (!last) return;
+        const r = last.res;
+        if (getMode() === 'forward') {
+            $('r1').value = formatEng(r.R1);
+            $('r2').value = formatEng(r.R2);
+            $('r3').value = formatEng(r.R3);
+            if (r.RfComputed && isFinite(r.Rf)) {
+                setVeMode(false);
+                setRfComputed(false);
+                $('rf').value = formatEng(r.Rf);
+            }
+            setMode('reverse', false);
+        } else {
+            $('ic1').value = formatEng(r.Ic1);
+            $('ic2').value = formatEng(r.Ic2);
+            const sw = r.swing || {};
+            if (sw.VR > 0 && sw.VC > 0) {
+                $('vr-ratio').value = sig6(sw.VR / sw.VC);
+                $('vc-ratio').value = '1';
+            }
+            setVeMode(false);
+            setMode('forward', false);
+        }
+        for (const id of ['r1', 'r2', 'r3', 'rf', 'ic1', 'ic2', 'vr-ratio', 'vc-ratio']) $(id).classList.remove('bad');
+        clearTimeout(timer);
+        compute();
+    }
+    $('xfer').addEventListener('click', transfer);
+
+    // ---------- SPICE parameter dialog ----------
+    // Edits KEY=value tokens of the model text on apply; the text stays the source of truth.
+    const PFIELDS = [
+        ['IS', '1e-16'], ['BF', '100'], ['NF', '1'], ['ISE', '0'],
+        ['NE', '1.5'], ['BR', '1'], ['NR', '1'], ['ISC', '0'],
+        ['NC', '2'], ['VAF', '∞'], ['VAR', '∞'], ['IKF', '∞'],
+        ['IKR', '∞'], ['RB', '0'], ['RE', '0'], ['RC', '0'],
+    ];
+    const POSITIVE = { IS: 1, BF: 1, NF: 1 };
+    const dlg = $('pdlg'), pgrid = $('pgrid');
+    let pq = 'q1';
+    pgrid.innerHTML = PFIELDS.map(([k, d]) =>
+        '<label for="p-' + k + '">' + k + '</label><input id="p-' + k + '" placeholder="' + d + '" spellcheck="false">').join('');
+
+    function fillDialog(text) {
+        for (const [k] of PFIELDS) { const v = getSpiceToken(text, k); $('p-' + k).value = v === null ? '' : v; }
+        validateDialog();
+    }
+
+    function validateDialog() {
+        const bad = [];
+        for (const [k] of PFIELDS) {
+            const el = $('p-' + k), s = el.value.trim();
+            let ok = true;
+            if (s !== '') {
+                const v = parseSpiceNumber(s);
+                ok = !isNaN(v) && v >= 0 && (!POSITIVE[k] || v > 0);
+            }
+            el.classList.toggle('bad', !ok);
+            if (!ok) bad.push(k);
+        }
+        $('papply').disabled = bad.length > 0;
+        $('perr').textContent = bad.length ? '入力値が不正: ' + bad.join(', ') : '';
+        return bad.length === 0;
+    }
+
+    function openDialog(q) {
+        pq = q;
+        const other = q === 'q1' ? 'q2' : 'q1';
+        $('ptitle').innerHTML = 'Q<sub>' + q.charAt(1) + '</sub>';
+        $('pcopy').textContent = 'copy ' + other.toUpperCase();
+        fillDialog($(q + '-model').value);
+        dlg.showModal();
+        $('p-IS').focus();
+    }
+
+    function applyDialog() {
+        if (!validateDialog()) return;
+        const ta = $(pq + '-model');
+        let t = ta.value;
+        for (const [k] of PFIELDS) t = setSpiceToken(t, k, $('p-' + k).value);
+        ta.value = t;
+        dlg.close('apply');
+        clearTimeout(timer);
+        compute();
+    }
+
+    pgrid.addEventListener('input', validateDialog);
+    $('pform').addEventListener('submit', (e) => { e.preventDefault(); applyDialog(); });
+    $('pcancel').addEventListener('click', () => dlg.close('cancel'));
+    $('pcopy').addEventListener('click', () => fillDialog($((pq === 'q1' ? 'q2' : 'q1') + '-model').value));
+    dlg.addEventListener('close', () => $(pq + '-param').focus());
+    $('q1-param').addEventListener('click', () => openDialog('q1'));
+    $('q2-param').addEventListener('click', () => openDialog('q2'));
     $('csv-in').addEventListener('click', () => $('csv-file').click());
     $('csv-file').addEventListener('change', (e) => { importFile(e.target.files[0]); e.target.value = ''; });
     document.addEventListener('dragover', (e) => {
@@ -658,7 +762,9 @@
     });
 
     document.addEventListener('keydown', (e) => {
+        if (document.getElementById('pdlg').open) return;
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); exportCsv(); return; }
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); transfer(); return; }
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); $('csv-file').click(); return; }
         const k = e.code === 'Digit1' || e.code === 'Numpad1' ? '1'
             : e.code === 'Digit2' || e.code === 'Numpad2' ? '2' : e.key;

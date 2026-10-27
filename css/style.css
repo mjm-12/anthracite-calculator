@@ -256,7 +256,7 @@ input.off { color: var(--mute); background: transparent; border-color: var(--rul
 @media (min-width: 700px) {
     .app { position: relative; }
     .csvbar { position: absolute; top: 12px; right: 12px; }
-    .status { padding-right: 110px; }
+    .status { padding-right: 190px; }
 }
 @media (min-width: 1400px) {
     .csvbar { top: 16px; right: 20px; }
@@ -268,3 +268,32 @@ body.drop::after {
     border: 3px solid var(--accent);
     pointer-events: none;
 }
+.open:disabled { color: var(--rule); border-color: var(--rule); cursor: default; }
+
+/* SPICE parameter dialog */
+.mhead { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.mhead .open { height: 20px; }
+dialog {
+    padding: 14px 16px;
+    border: 1px solid var(--fg);
+    color: var(--fg);
+    background: var(--bg);
+    font: inherit;
+    width: min(520px, calc(100vw - 32px));
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
+.ptitle { font-weight: 600; margin-bottom: 10px; }
+.pgrid {
+    display: grid;
+    grid-template-columns: repeat(4, 2.8em minmax(0, 1fr));
+    gap: 6px 8px;
+    align-items: center;
+}
+.pgrid label { font: 11px var(--mono); color: var(--mute); }
+.pgrid input { font-family: var(--mono); font-size: 12px; }
+.pbtns { display: flex; gap: 6px; align-items: center; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.pbtns .open { height: 24px; padding: 0 10px; }
+.pbtns #papply { color: var(--bg); background: var(--fg); border-color: var(--fg); }
+.pbtns #papply:disabled { color: var(--bg); background: var(--rule); border-color: var(--rule); }
+.perr { flex: 1; color: var(--accent); font-weight: 600; font-size: 12px; }
+@media (max-width: 520px) { .pgrid { grid-template-columns: repeat(2, 2.8em minmax(0, 1fr)); } }

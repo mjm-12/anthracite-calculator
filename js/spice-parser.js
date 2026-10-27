@@ -52,3 +52,41 @@ function parseSpiceModel(modelStr) {
     Object.defineProperty(params, 'bad', { value: bad, enumerable: false });
     return params;
 }
+
+// --- Token editing (used by the parameter dialog) ---
+// The model text stays the single source of truth; these edit one KEY=value
+// token in place and leave every other token (CJE, TF, ...) untouched.
+
+function spiceTokenRe(name) {
+    return new RegExp('(^|[^A-Za-z0-9_])(' + name + ')(\\s*=\\s*)([^\\s,()]+)', 'i');
+}
+
+// Raw value string of NAME, or null when absent
+function getSpiceToken(text, name) {
+    const m = String(text || '').match(spiceTokenRe(name));
+    return m ? m[4] : null;
+}
+
+// Set NAME=value (value null/'' removes the token). Returns the new text.
+function setSpiceToken(text, name, value) {
+    text = String(text || '');
+    const re = spiceTokenRe(name);
+    const m = text.match(re);
+    const has = value !== null && value !== undefined && String(value).trim() !== '';
+    if (m) {
+        const start = m.index + m[1].length, end = m.index + m[0].length;
+        if (has) return text.slice(0, start) + m[2] + m[3] + String(value).trim() + text.slice(end);
+        // remove the token and one adjoining space
+        let a = start, b = end;
+        if (text[b] === ' ') b++; else if (a > 0 && text[a - 1] === ' ') a--;
+        return text.slice(0, a) + text.slice(b);
+    }
+    if (!has) return text;
+    const tok = name + '=' + String(value).trim();
+    const close = text.lastIndexOf(')');
+    if (close >= 0) {
+        const before = text.slice(0, close);
+        return before + (/[\s(]$/.test(before) ? '' : ' ') + tok + text.slice(close);
+    }
+    return text.trim() === '' ? tok : text.replace(/\s*$/, '') + ' ' + tok;
+}
