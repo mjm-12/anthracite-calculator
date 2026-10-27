@@ -91,6 +91,47 @@
                 (sw.peak && isFinite(sw.peak.dB) ? '<dt>peak</dt><dd>' + fmtPeak(sw.peak, unit, true) + '</dd>' : '') + '</dl>';
         }
         plot(svg, curves, rg, sweep);
+        svg._bode = { curves: curves, sweep: sweep };   // kept for CSV export
+        return true;
+    }
+
+    // ---------- CSV export of the plotted data (one rectangular table) ----------
+    function stamp(d) {
+        const p = (x) => String(x).padStart(2, '0');
+        return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    }
+
+    function csv(svg) {
+        const b = svg && svg._bode;
+        if (!b || !b.curves.length) return null;
+        const f = b.curves[0].sw.f || [];
+        const num = (v) => (v === undefined || v === null ? '' : String(v));
+        let head, rowOf;
+        if (b.sweep) {
+            head = ['f_Hz'];
+            for (const c of b.curves) head.push('RV1=' + c.label + '_dB', 'RV1=' + c.label + '_deg', 'RV1=' + c.label + '_Zin_ohm');
+            rowOf = (i) => [num(f[i])].concat(...b.curves.map((c) => [num(c.sw.AvS.dB[i]), num(c.sw.AvS.phaseDeg[i]), num(c.sw.Zin && c.sw.Zin.mag[i])]));
+        } else {
+            const sw = b.curves[0].sw;
+            head = ['f_Hz', 'AvS_dB', 'AvS_phase_deg', 'Zin_ohm', 'Zin_phase_deg'];
+            rowOf = (i) => [num(f[i]), num(sw.AvS.dB[i]), num(sw.AvS.phaseDeg[i]), num(sw.Zin && sw.Zin.mag[i]), num(sw.Zin && sw.Zin.phaseDeg[i])];
+        }
+        const rows = [head];
+        for (let i = 0; i < f.length; i++) rows.push(rowOf(i));
+        return { text: '﻿' + toCsv(rows), name: 'fuzzface_bode' + (b.sweep ? '_rv1sweep' : '') + '_' + stamp(new Date()) + '.csv' };
+    }
+
+    function exportCsv(svg) {
+        const c = csv(svg);
+        if (!c) return false;
+        const url = URL.createObjectURL(new Blob([c.text], { type: 'text/csv;charset=utf-8' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = c.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
         return true;
     }
 
@@ -209,17 +250,26 @@
         return fa > 0 && fb > fa && isFinite(fb) ? { fStart: fa, fStop: fb } : null;
     }
 
-    // RV1-sweep toggle button (aria-pressed), persisted; Alt+R toggles while focus is inside `scope`
+    // RV1-sweep toggle button (aria-pressed), persisted; Alt+R toggles while focus is inside `scope`.
+    // Shared state: every change is broadcast on BroadcastChannel('ffop') (and mirrored by the
+    // localStorage 'storage' event), so the dialog and all pop-out windows stay in step.
     function sweepToggle(btn, scope, onChange) {
         let on = false;
         try { on = localStorage.getItem(SWEEP_KEY) === '1'; } catch (e) { /* ignore */ }
+        const ch = typeof BroadcastChannel === 'function' ? new BroadcastChannel('ffop') : null;
         const paint = () => btn.setAttribute('aria-pressed', String(on));
-        const set = (v) => {
+        const set = (v, remote) => {
+            if (v === on && remote) return;
             on = v;
             paint();
-            try { localStorage.setItem(SWEEP_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+            if (!remote) {
+                try { localStorage.setItem(SWEEP_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+                if (ch) ch.postMessage({ type: 'sweep', on: on });
+            }
             onChange(on);
         };
+        if (ch) ch.addEventListener('message', (e) => { if (e.data && e.data.type === 'sweep') set(!!e.data.on, true); });
+        window.addEventListener('storage', (e) => { if (e.key === SWEEP_KEY && e.newValue !== null) set(e.newValue === '1', true); });
         btn.addEventListener('click', () => set(!on));
         scope.addEventListener('keydown', (e) => {
             if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyR' || e.key === 'r' || e.key === 'R')) {
@@ -240,7 +290,7 @@
     }
 
     root.FFBode = {
-        draw: draw, range: range, sweepToggle: sweepToggle, toJSON: toJSON, fromJSON: fromJSON,
+        draw: draw, range: range, sweepToggle: sweepToggle, toJSON: toJSON, fromJSON: fromJSON, csv: csv, exportCsv: exportCsv,
         RV1_SWEEP: RV1_SWEEP, CHANNEL: 'ffop', STATE_KEY: 'ffop.bode.state',
     };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

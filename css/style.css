@@ -433,3 +433,8 @@ body.bodepage { height: 100vh; }
 .bode-pane { height: 100vh; padding: 10px 14px; }
 .bode-pane #bplot.stale, dialog.bode #bplot.stale { opacity: 0.35; }
 #gain-unit { margin-left: 2px; }
+
+/* uncommitted edit (recompute happens on Enter / leaving the field) */
+input.dirty, textarea.dirty { color: var(--mute); border-bottom: 1px dashed var(--mute); }
+#bexport { height: 24px; align-self: flex-start; }
+.btitle #bexport { height: 20px; }

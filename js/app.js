@@ -325,6 +325,7 @@
     }
 
     function compute() {
+        clearDirty(app);   // every field's current value is now committed
         save();
         const inp = readInputs();
         if (invalid.length) {
@@ -760,18 +761,23 @@
     }
     if (chan) chan.onmessage = (e) => { if (e.data && e.data.type === 'hello') publishState(); };
 
-    bdlg.addEventListener('input', () => { redrawBode(); });
+    bdlg.addEventListener('input', (e) => { if (e.target.tagName === 'INPUT') e.target.classList.add('dirty'); });
+    bdlg.addEventListener('change', () => { clearDirty(bdlg); save(); redrawBode(); publishState(); });
+    bdlg.addEventListener('focusout', (e) => {
+        if (e.target.classList && e.target.classList.contains('dirty')) { clearDirty(bdlg); save(); redrawBode(); publishState(); }
+    });
     bdlg.addEventListener('keydown', (e) => {
         const el = e.target;
         if (e.key === 'Escape') { e.preventDefault(); closeBode(); return; }
         if (el.tagName === 'INPUT' && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey) {
-            if (stepValue(el, e.key === 'ArrowUp' ? 1 : -1)) { e.preventDefault(); save(); redrawBode(); }
-        } else if (e.key === 'Enter' && el.tagName === 'INPUT') { e.preventDefault(); redrawBode(); }
+            if (stepValue(el, e.key === 'ArrowUp' ? 1 : -1)) { e.preventDefault(); el.classList.remove('dirty'); save(); redrawBode(); }
+        } else if (e.key === 'Enter' && el.tagName === 'INPUT') { e.preventDefault(); clearDirty(bdlg); save(); redrawBode(); }
     });
     bdlg.addEventListener('change', save);
     $('bform').addEventListener('submit', (e) => e.preventDefault());
     $('bclose').addEventListener('click', closeBode);
     $('bwin').addEventListener('click', popoutBode);
+    $('bexport').addEventListener('click', () => FFBode.exportCsv(bplot));
     $('bode-btn').addEventListener('click', toggleBode);
 
     // drag by the title bar
@@ -885,10 +891,19 @@
     window.FFApp = { buildCsv: buildCsv, importCsvText: importCsvText };   // test hook
 
     // ---------- events ----------
-    app.addEventListener('input', (e) => { if (e.target.id !== 'csv-file') schedule(); });
+    function isText(el) {
+        return (el.tagName === 'INPUT' && el.type !== 'radio' && el.type !== 'file') || el.tagName === 'TEXTAREA';
+    }
+    function clearDirty(scope) { for (const el of scope.querySelectorAll('.dirty')) el.classList.remove('dirty'); }
+
+    // Text fields recompute on commit (Enter / leaving the field = 'change'), not while typing.
+    // Uncommitted edits are marked .dirty; discrete controls (selects, toggles, stepping) are immediate.
+    app.addEventListener('input', (e) => { if (isText(e.target)) e.target.classList.add('dirty'); });
+    app.addEventListener('focusout', (e) => { if (e.target.classList && e.target.classList.contains('dirty')) schedule(0); });
     app.addEventListener('change', (e) => {
         if (e.target.id === 'csv-file') return;
-        if (e.target.name === 'mode') { applyMode(); schedule(0); } else schedule();
+        if (e.target.name === 'mode') applyMode();
+        schedule(0);
     });
 
     app.addEventListener('keydown', (e) => {
@@ -900,6 +915,11 @@
             }
         } else if (e.key === 'Enter' && el.tagName === 'INPUT') {
             e.preventDefault();
+            schedule(0);
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && el.tagName === 'TEXTAREA') {
+            // Ctrl+Enter inside a model textarea commits it (instead of "transfer")
+            e.preventDefault();
+            e.stopPropagation();
             schedule(0);
         }
     });
@@ -916,7 +936,11 @@
             if (e.shiftKey) popoutBode(); else toggleBode();
             return;
         }
-        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); exportCsv(); return; }
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) {
+            e.preventDefault();
+            if (bdlg.open && bdlg.contains(document.activeElement)) FFBode.exportCsv(bplot); else exportCsv();
+            return;
+        }
         if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); transfer(); return; }
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); $('csv-file').click(); return; }
         const k = e.code === 'Digit1' || e.code === 'Numpad1' ? '1'

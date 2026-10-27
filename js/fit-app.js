@@ -138,6 +138,7 @@
     }
 
     function run() {
+        for (const el of document.querySelectorAll('.fit .dirty')) el.classList.remove('dirty');
         save();
         const { pts, bad, skipped } = readPoints();
         const vtEl = $('fit-vt'), Vt = parseEngineering(vtEl.value);
@@ -336,7 +337,16 @@
         paintOvr();
     }
 
-    document.querySelector('.fit').addEventListener('input', (e) => { if (e.target.id !== 'fit-model') schedule(); });
+    // Cells / V_T / base model commit on Enter or leaving the field; edits pending are marked .dirty
+    const fitRoot = document.querySelector('.fit');
+    fitRoot.addEventListener('input', (e) => {
+        if (e.target.id !== 'fit-model' && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) e.target.classList.add('dirty');
+    });
+    fitRoot.addEventListener('change', (e) => { if (e.target.id !== 'fit-model') schedule(0); });
+    fitRoot.addEventListener('focusout', (e) => { if (e.target.classList && e.target.classList.contains('dirty')) schedule(0); });
+    fitRoot.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && e.target.tagName === 'INPUT') { e.preventDefault(); schedule(0); }
+    });
     $('base-box').addEventListener('toggle', save);
 
     load();

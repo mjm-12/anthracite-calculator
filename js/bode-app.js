@@ -23,10 +23,16 @@
         const r = JSON.parse(localStorage.getItem(RANGE_KEY) || 'null');
         if (r) { $('fstart').value = r.a; $('fstop').value = r.b; }
     } catch (e) { /* ignore */ }
-    document.addEventListener('input', () => {
+    // f range commits on Enter / leaving the field; uncommitted edits are marked .dirty
+    function commit() {
+        for (const i of document.querySelectorAll('.dirty')) i.classList.remove('dirty');
         try { localStorage.setItem(RANGE_KEY, JSON.stringify({ a: $('fstart').value, b: $('fstop').value })); } catch (e) { /* ignore */ }
-        schedule();
-    });
+        schedule(0);
+    }
+    document.addEventListener('input', (e) => { if (e.target.tagName === 'INPUT') e.target.classList.add('dirty'); });
+    document.addEventListener('change', commit);
+    document.addEventListener('focusout', (e) => { if (e.target.classList && e.target.classList.contains('dirty')) commit(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); commit(); } });
 
     // last state written by the calculator (used until the first message arrives)
     try {
@@ -44,5 +50,9 @@
         window.addEventListener('beforeunload', () => ch.close());
     }
     window.addEventListener('resize', () => schedule());
+    $('bexport').addEventListener('click', () => FFBode.exportCsv(el.svg));
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); FFBode.exportCsv(el.svg); }
+    });
     redraw();
 })();
