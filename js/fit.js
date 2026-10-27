@@ -328,7 +328,7 @@
         for (const k of free) {
             const d = FIT_PARAMS[k];
             if (Q[k] <= d.lo * 1.0001 || Q[k] >= d.hi * 0.9999) {
-                warnings.push(k + ' が探索範囲の端に張り付いた (' + spiceNum(Q[k]) + '): 推定値は信頼できない');
+                warnings.push(k + ' が探索範囲端で収束 (' + spiceNum(Q[k]) + '): 推定値は信頼できない');
             }
         }
         if (!converged) warnings.push('反復が上限 (' + MAX_IT + ') に達した');

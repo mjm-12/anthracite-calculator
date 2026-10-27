@@ -353,7 +353,7 @@
                 acBad = true;
             }
         }
-        if (acBad) w.push('能動領域外のトランジスタがある: A_v, Z_in はこの動作点での小信号値');
+        if (acBad) w.push('能動領域外のトランジスタが含まれる: 音が出ない可能性がある');
         if (r.nodes.VE2 < 0) w.push('V_E2 が負 (' + fmtV(r.nodes.VE2) + ')');
         if (r.nodes.VC2 < 0) w.push('V_C2 が負 (' + fmtV(r.nodes.VC2) + ')');
         if (r.branch.I1 < 0) w.push('R1 の電流が逆向き (I_1 = ' + fmtI(r.branch.I1) + ')');
@@ -420,7 +420,7 @@
             vbc1 += w * (n1 - vbc1); vbc2 += w * (n2 - vbc2);
         }
         if (!converged) {
-            throw new Error('順方向計算が収束しない: 指定した I_C と V_R:V_C ではトランジスタが深く飽和する');
+            throw new Error('順方向計算が収束しない: 指定した I_C と V_R:V_C ではトランジスタが深く飽和してしまう');
         }
 
         if (!(VE2 > 0)) {
@@ -1037,7 +1037,7 @@
         const fStart = optDefault(opts.fStart, 10), fStop = optDefault(opts.fStop, 1e6);
         const n = Math.max(2, Math.round(optDefault(opts.n, 200)));
         reqPos(fStart, 'fStart'); reqPos(fStop, 'fStop');
-        if (!(fStop > fStart)) throw new Error('fStop は fStart より大きくする');
+        if (!(fStop > fStart)) throw new Error('fStart < fStop を満たさない');
         const capIn = (v, d, label) => reqPosOrInf(optDefault(v, d), label);
         const p = {
             R1: r.R1, R2: r.R2, R3: r.R3, Rf: r.Rf,

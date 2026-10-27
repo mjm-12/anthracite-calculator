@@ -274,7 +274,7 @@
         let d = {};
         try { d = JSON.parse(localStorage.getItem(CALC_KEY) || '{}') || {}; } catch (e) { d = {}; }
         d[q + '-model'] = lastModel;
-        try { localStorage.setItem(CALC_KEY, JSON.stringify(d)); } catch (e) { return setStatus('localStorage に書けない', true); }
+        try { localStorage.setItem(CALC_KEY, JSON.stringify(d)); } catch (e) { return setStatus('localStorage に記録できない', true); }
         location.href = 'index.html';
     }
     // Target transistor from fit.html?q=1|2 (opened from the calculator's Q1/Q2 "fit" button)
