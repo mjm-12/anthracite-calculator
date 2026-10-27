@@ -256,7 +256,7 @@ input.off { color: var(--mute); background: transparent; border-color: var(--rul
 @media (min-width: 700px) {
     .app { position: relative; }
     .csvbar { position: absolute; top: 12px; right: 12px; }
-    .status { padding-right: 190px; }
+    .status { padding-right: 220px; }
 }
 @media (min-width: 1400px) {
     .csvbar { top: 16px; right: 20px; }
@@ -297,3 +297,68 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
 .pbtns #papply:disabled { color: var(--bg); background: var(--rule); border-color: var(--rule); }
 .perr { flex: 1; color: var(--accent); font-weight: 600; font-size: 12px; }
 @media (max-width: 520px) { .pgrid { grid-template-columns: repeat(2, 2.8em minmax(0, 1fr)); } }
+
+/* ---------- fit.html ---------- */
+.fit { display: grid; gap: 16px; padding: 12px; }
+.fit-in, .fit-out { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fit-top { display: flex; gap: 6px; }
+a.open { display: inline-flex; align-items: center; height: 20px; text-decoration: none; }
+.meas { margin: 0; }
+.meas th, .meas td { padding: 2px 3px; }
+.meas thead th { text-align: center; font-size: 12px; }
+.meas tbody th { width: 1.6em; text-align: right; color: var(--mute); }
+.meas input { height: 22px; }
+.hint { display: flex; gap: 4px; }
+.fit-opt { grid-template-columns: 4.2em minmax(0, 8em) 1.4em; border-top: 1px solid var(--rule); }
+.ovr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.ovr-b {
+    display: flex; justify-content: space-between; align-items: center;
+    height: 24px; padding: 0 8px; font: inherit; font-size: 12px;
+    color: var(--fg); background: var(--bg); border: 1px solid var(--rule); border-radius: 0; cursor: pointer;
+}
+.ovr-b b { font-weight: 400; color: var(--mute); }
+.ovr-b[data-s="free"] { border-color: var(--fg); }
+.ovr-b[data-s="free"] b { color: var(--fg); font-weight: 600; }
+.ovr-b[data-s="fix"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.ovr-b[data-s="fix"] b { color: var(--bg); font-weight: 600; }
+.ovr-b:focus-visible, .base summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.base summary { cursor: pointer; color: var(--mute); font-size: 12px; }
+.base textarea, #fit-model { width: 100%; font: 11px/1.35 var(--mono); padding: 3px 5px; resize: vertical; }
+.base textarea { margin: 4px 0; }
+.fit-plot { min-width: 0; min-height: 0; }
+.fit-plot svg { display: block; width: 100%; max-width: 720px; height: auto; max-height: 100%; margin: 0 auto; }
+.fit-plot .stale, #fit-res.stale { opacity: 0.35; }
+#plot .g { stroke: var(--rule); stroke-width: 0.6; }
+#plot .ax { stroke: var(--mute); stroke-width: 1; }
+#plot .t { fill: var(--mute); font-size: 10px; font-family: inherit; }
+#plot .m { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+#plot .d { fill: var(--fg); }
+.fit-par td.fs { color: var(--mute); font-size: 11px; text-align: left; width: 3.5em; }
+.fit-par th { width: auto; }
+.fit-pts td, .fit-pts th { font-size: 12px; }
+.fit-pts thead th { text-align: right; }
+#fit-model { height: calc(4 * 11px * 1.35 + 8px); background: var(--field); }
+.fit-btns { display: flex; gap: 4px; }
+.fit-btns .open { height: 24px; padding: 0 10px; }
+@media (min-width: 700px) {
+    .fit {
+        height: 100vh;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-areas: "in out" "plot out";
+    }
+    .fit-in { grid-area: in; }
+    .fit-plot { grid-area: plot; }
+    .fit-out { grid-area: out; overflow: auto; border-left: 1px solid var(--rule); padding-left: 16px; }
+}
+@media (min-width: 1400px) {
+    .fit {
+        grid-template-columns: 440px minmax(0, 1fr) 460px;
+        grid-template-rows: minmax(0, 1fr);
+        grid-template-areas: "in plot out";
+        padding: 16px 20px;
+        gap: 24px;
+    }
+    .fit-plot { align-self: center; }
+    .fit-in { overflow: auto; }
+}

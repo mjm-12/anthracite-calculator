@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuzz Face OP · fit</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <main class="fit">
+        <section class="fit-in">
+            <div class="fit-top">
+                <a class="open" href="index.html" title="back to the calculator">calc</a>
+            </div>
+
+            <table class="meas" id="meas">
+                <thead>
+                    <tr><th>#</th><th>I<sub>B</sub> [A]</th><th>V<sub>CE</sub> [V]</th><th>I<sub>C</sub> [A]</th><th>V<sub>BE</sub> [V]</th></tr>
+                </thead>
+                <tbody id="meas-body"></tbody>
+            </table>
+            <div class="hint" title="Ctrl+Enter: add row / Ctrl+Backspace: delete row / paste: tab or comma separated I_B, V_CE, I_C, V_BE">
+                <button type="button" class="open" id="row-add" title="Ctrl+Enter">+ row</button>
+                <button type="button" class="open" id="row-del" title="Ctrl+Backspace">− row</button>
+            </div>
+
+            <div class="fields fit-opt">
+                <label for="fit-vt">V<sub>T</sub></label><input id="fit-vt" value="25.85m"><span class="u">V</span>
+            </div>
+
+            <div class="ovr" id="ovr" title="auto → free → fix (Space)"></div>
+
+            <details class="base" id="base-box">
+                <summary>base model</summary>
+                <textarea id="fit-base" rows="3" spellcheck="false" placeholder="IS=… BR=… ISC=… IKF=… RB=…"></textarea>
+                <button type="button" class="open" id="base-q1" title="use the calculator's Q1 model">← Q1</button>
+            </details>
+        </section>
+
+        <section class="fit-plot">
+            <svg id="plot" viewBox="0 0 480 300" preserveAspectRatio="xMidYMid meet" role="img" aria-label="beta vs I_C"></svg>
+        </section>
+
+        <section class="fit-out">
+            <div class="status" id="fit-status"></div>
+            <div id="fit-res"></div>
+            <textarea id="fit-model" rows="3" readonly spellcheck="false"></textarea>
+            <div class="fit-btns">
+                <button type="button" class="open" id="to-q1" title="write to the calculator's Q1 and open it">→ Q<sub>1</sub></button>
+                <button type="button" class="open" id="to-q2" title="write to the calculator's Q2 and open it">→ Q<sub>2</sub></button>
+                <button type="button" class="open" id="copy">copy</button>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/utils.js"></script>
+    <script src="js/spice-parser.js"></script>
+    <script src="js/engine.js"></script>
+    <script src="js/fit.js"></script>
+    <script src="js/fit-app.js"></script>
+</body>
+
+</html>

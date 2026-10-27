@@ -15,6 +15,7 @@ Fuzz Face 回路（NPN 2 石の直結帰還型ファズ）の直流動作点と�
 - [逆計算](#逆計算)
 - [交流解析](#交流解析)
 - [警告とエラー](#警告とエラー)
+- [パラメータ推定](#パラメータ推定)
 - [制限事項](#制限事項)
 - [テスト](#テスト)
 - [ファイル構成](#ファイル構成)
@@ -263,6 +264,39 @@ $$A_{vS} = \frac{v_{C2}}{v_s} = A_v \frac{Z_{in}}{R_{in} + Z_{in}}$$
 
 ---
 
+## パラメータ推定
+
+`js/fit.js`（`FFFit`） は、数点の直流測定 $\{I_B, I_C, V_{BE}, V_{CE}\}$ から Gummel-Poon の IS, BF, NF, ISE, NE, VAF を推定する。画面は `fit.html`。
+
+各測定点で、測定した $v_{be}$ と $v_{bc} = V_{BE} - V_{CE}$ でモデル（`FFEngine.gpDC`）を評価し、残差
+
+$$r = \left[\ln\frac{I_{C,model}}{I_C},\ \ln\frac{I_{B,model}}{I_B}\right]$$
+
+の二乗和を Levenberg-Marquardt 法で最小化する。IS, ISE, BF, VAF は対数、NF（0.9〜2）と NE（1〜4）は範囲付きのロジット変換をかけて探索する。初期値は、最大電流の点から $I_S = I_C e^{-V_{BE}/V_T}$（NF = 1）、BF は測定した $\beta$ の最大値とする。
+
+**推定するパラメータの自動選択**
+
+| 測定点 | 推定する | 固定する |
+|------|------|------|
+| 1 点 | IS, BF | NF = 1, ISE = 0 |
+| $I_C$ が 2 倍以上違う点が 2 水準 | IS, NF, BF, ISE | NE |
+| 同 3 水準以上 | 変更なし（NE は自動では推定しない。手動で free にできる） | |
+| $I_B$ がほぼ同じ（±10 %）で $V_{CE}$ が 1 V 以上違う 2 点 | + VAF | |
+
+推定しないパラメータは `opts.fixed`、`opts.base`（パース済みのモデル）、既定値（NE = 1.5, VAF = $\infty$）の順に決める。BR, NR, ISC, NC, IKF, IKR, VAR, RB, RE, RC はここでは推定せず、`opts.base` か SPICE の既定値を使う。`opts.free` で推定するパラメータを直接指定できる。$V_{CE} < 0.3$ V の点は飽和の可能性があるので除外し、警告を出す。
+
+結果は推定値、各点のモデル値と $\Delta V_{BE}$（測定 $I_C$ を与えるモデルの $V_{BE}$ と測定値の差）、残差の RMS、`.MODEL FIT NPN(...)` 形式の文字列（有効数字 4 桁）を返す。`FFFit.betaCurve` は指定した $V_{CE}$ での $\beta$–$I_C$ 曲線を返す。
+
+**識別できる範囲**（2SC8888-W から合成した測定値での試験）
+
+- $I_B = 1, 10\ \mu\text{A}$ の 2 点で、NE と BR などを正しく与えれば IS, NF, BF, ISE は正確に戻る。$I_C$ は NE に依存しないので、NE を 1.5 のままにしても IS と NF は正確で、BF が −2.8 %、ISE が数倍ずれる。
+- 3 点（1, 10, 100 µA）で NE を free にすると、雑音の無いデータなら NE まで戻る。ただし 100 µA では $I_C \approx 33$ mA で IKF が効くので、IKF を与えないと IS, BF, NE が大きくずれる。
+- $V_{CE}$ を変えた 2 点があれば VAF も戻る。
+- 測定誤差（$V_{BE}$ ±0.5 mV、電流 ±1 %）を入れると、2 点の推定で IS は ±30 %、BF は ±4 %、NF は ±1.2 % ばらつく（5〜95 パーセンタイル）。IS と NF が相関して動くので、回路の動作点はほとんど変わらない。推定したモデルで逆計算した $I_{C2}$ の誤差は 3 回路で ±0.3 % 以内だった。3 点の推定では、雑音があると NE と ISE は決まらず探索範囲の端に張り付くことがあり、そのときは警告を出す。それでも回路の $I_{C2}$ の誤差は ±0.7 % 以内だった。このため NE は自動選択から外し、既定値（1.5 か base の値）に固定する。
+- 1 点だけでは NF と ISE を固定するので、IS と BF は測定点での値に合わせた見かけの値になる。その点の $I_C$, $I_B$ は正確に再現する。
+
+---
+
 ## 制限事項
 
 - 直流では RB, RE, RC のオーム抵抗を入れていない。既定モデルでは $R_E I_E \approx 0.2$ mV、飽和時の $R_C I_C \approx 1$ mV 程度の差が LTspice の .op と出る。RB, RE, RC を除いた .model で比べると、直流解は LTspice と µV 以下で一致した。
@@ -278,6 +312,7 @@ $$A_{vS} = \frac{v_{C2}}{v_s} = A_v \frac{Z_{in}}{R_{in} + Z_{in}}$$
 
 ```
 node tests/engine.test.js
+node tests/fit.test.js
 ```
 
 依存パッケージは不要。次の項目を確かめる。
@@ -300,10 +335,12 @@ node tests/engine.test.js
 ```
 FuzzFace-OperatingPoint-Calculator/
 ├── index.html              # メインページ
+├── fit.html                # パラメータ推定の画面
 ├── css/
 │   └── style.css           # スタイルシート
 ├── js/
 │   ├── engine.js           # 計算エンジン（順方向・逆計算・交流解析）
+│   ├── fit.js              # 測定値からの SPICE パラメータ推定
 │   ├── app.js              # UI と計算エンジンの接続
 │   ├── utils.js            # 工学記法パーサ / E24 系列 / フォーマッタ
 │   └── spice-parser.js     # SPICE モデル文字列パーサ
@@ -311,7 +348,8 @@ FuzzFace-OperatingPoint-Calculator/
 ├── Python/
 │   └── FuzzFace_bc.py      # 回路図生成スクリプト
 ├── tests/
-│   └── engine.test.js      # 計算エンジンのテスト
+│   ├── engine.test.js      # 計算エンジンのテスト
+│   └── fit.test.js         # パラメータ推定のテスト
 └── FuzzFace動作点解析メモ.md  # 交流解析の閉形式の導出メモ
 ```
 
