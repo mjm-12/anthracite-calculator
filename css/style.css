@@ -449,3 +449,34 @@ body.bodepage { height: 100vh; }
 input.dirty, textarea.dirty { color: var(--mute); border-bottom: 1px dashed var(--mute); }
 #bexport { height: 24px; align-self: flex-start; }
 .btitle #bexport { height: 20px; }
+
+/* "?" help icon + popover (V_R : V_C) */
+.lblhelp { position: relative; display: inline-flex; align-items: center; white-space: nowrap; }
+.help {
+    position: absolute; right: -10px; top: -7px;
+    width: 13px; height: 13px; padding: 0;
+    font-family: inherit; font-size: 9px; font-weight: 600; line-height: 11px; text-align: center;
+    color: var(--mute); background: var(--bg);
+    border: 1px solid var(--mute); border-radius: 50%; cursor: help;
+}
+.help:hover, .help:focus-visible, .help[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); outline: none; }
+.pop {
+    position: fixed; z-index: 20;
+    display: flex; gap: 14px; align-items: flex-start;
+    width: min(640px, calc(100vw - 16px));
+    padding: 12px 14px;
+    background: var(--bg); color: var(--fg);
+    border: 1px solid var(--fg);
+}
+.pop[hidden] { display: none; }
+.pop figure { margin: 0; flex: none; width: 260px; }
+.pop img { display: block; width: 100%; height: auto; }
+.pop figcaption { font-size: 10.5px; color: var(--mute); margin-top: 4px; }
+.pop blockquote {
+    margin: 0; padding: 0 0 0 10px;
+    border-left: 2px solid var(--rule);
+    font-size: 12px; line-height: 1.6;
+}
+.pop blockquote p { margin: 0; }
+.pop footer { margin-top: 6px; font-size: 10.5px; color: var(--mute); }
+@media (max-width: 640px) { .pop { flex-direction: column; } .pop figure { width: 100%; } }

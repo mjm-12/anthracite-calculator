@@ -56,7 +56,7 @@
                 <div class="fields mode-forward">
                     <label for="ic1">I<sub>C1</sub></label><input id="ic1" value="30u" data-step="e24"><span class="u">A</span>
                     <label for="ic2">I<sub>C2</sub></label><input id="ic2" value="300u" data-step="e24"><span class="u">A</span>
-                    <label for="vr-ratio" id="ratio-label">V<sub>R</sub>:V<sub>C</sub></label>
+                    <span class="lblhelp"><label for="vr-ratio" id="ratio-label">V<sub>R</sub>:V<sub>C</sub></label><button type="button" class="help" id="ratio-help-btn" aria-label="V_R : V_C の最適配分 (説明)" aria-describedby="ratio-help" aria-expanded="false">?</button></span>
                     <span class="pair ratio"><button type="button" class="seg2" id="rf-mode" aria-pressed="false" aria-label="R_F / V_E" title="R_F input / V_E ratio (Alt+3)"><span>R<sub>F</sub></span><span>V<sub>E</sub></span></button><input id="vr-ratio" value="1" data-step="0.1"><i>:</i><input id="vc-ratio" value="1" data-step="0.1" aria-label="VC ratio"><i class="ve-part" hidden>:</i><input id="ve-ratio" class="ve-part" value="0.2" data-step="0.1" aria-label="VE ratio" hidden></span><span class="u"></span>
                 </div>
 
@@ -107,6 +107,23 @@
             </div>
         </div>
     </main>
+
+    <div class="pop" id="ratio-help" role="tooltip" hidden>
+        <figure>
+            <img alt="エミッタ接地回路の V_R, V_C, V_E の配分" width="480" height="404" data-src="images/common-emitter.png">
+            <figcaption>図：同書 p.84 図4.18 を参考に作成</figcaption>
+        </figure>
+        <blockquote>
+            <p>負荷 R<sub>L</sub> に取り出せる電圧を最大にするための V<sub>R</sub> と V<sub>C</sub> の最適配分は、<br>
+            V<sub>R</sub> : V<sub>C</sub> = 1 + ε : 1　（ε = R<sub>C</sub> / R<sub>L</sub>）　（4.13）<br>
+            によって与えられる。式（4.13）における「1」が、取り出せる振幅に相当している。<br>
+            また、バイアスの安定性も考慮すると、<br>
+            V<sub>R</sub> : V<sub>C</sub> : V<sub>E</sub> = 1 + ε : 1 : 0.2～1　（4.14）<br>
+            が最適である。<br>
+            ベース接地回路においても、最適バイアス電圧の配分は式（4.14）によって与えられる。</p>
+            <footer>出典：石橋幸男『アナログ電子回路演習』pp.84–85</footer>
+        </blockquote>
+    </div>
 
     <dialog id="bdlg" class="bode" aria-label="Bode plot">
         <div class="btitle" id="btitle" title="drag to move">

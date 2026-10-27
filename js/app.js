@@ -890,6 +890,42 @@
     });
     window.FFApp = { buildCsv: buildCsv, importCsvText: importCsvText };   // test hook
 
+    // ---------- V_R : V_C help popover (hover / focus / tap; Esc closes) ----------
+    const helpBtn = $('ratio-help-btn'), helpPop = $('ratio-help');
+    let helpPinned = false;
+    function showHelp() {
+        const img = helpPop.querySelector('img[data-src]');
+        if (img) { img.src = img.dataset.src; img.removeAttribute('data-src'); }   // lazy: first open only
+        helpPop.hidden = false;
+        helpBtn.setAttribute('aria-expanded', 'true');
+        const b = helpBtn.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight, M = 8;
+        const w = helpPop.offsetWidth, h = helpPop.offsetHeight;
+        let x = b.left, y = b.bottom + 6;
+        if (y + h > H - M) y = b.top - 6 - h;            // flip above
+        if (y < M) y = Math.max(M, H - M - h);
+        x = Math.min(Math.max(M, x), W - M - w);
+        helpPop.style.left = Math.round(x) + 'px';
+        helpPop.style.top = Math.round(y) + 'px';
+    }
+    function hideHelp() {
+        helpPop.hidden = true;
+        helpPinned = false;
+        helpBtn.setAttribute('aria-expanded', 'false');
+    }
+    helpBtn.addEventListener('mouseenter', showHelp);
+    helpBtn.addEventListener('mouseleave', () => { if (!helpPinned && document.activeElement !== helpBtn) hideHelp(); });
+    helpBtn.addEventListener('focus', showHelp);
+    helpBtn.addEventListener('blur', () => { if (!helpPinned) hideHelp(); });
+    helpBtn.addEventListener('click', (e) => {          // tap on touch: pin / unpin
+        e.preventDefault();
+        if (helpPinned) hideHelp(); else { helpPinned = true; showHelp(); }
+    });
+    document.addEventListener('pointerdown', (e) => {
+        if (helpPinned && !helpPop.contains(e.target) && e.target !== helpBtn) hideHelp();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !helpPop.hidden) hideHelp(); });
+    window.addEventListener('resize', () => { if (!helpPop.hidden) showHelp(); });
+
     // ---------- events ----------
     function isText(el) {
         return (el.tagName === 'INPUT' && el.type !== 'radio' && el.type !== 'file') || el.tagName === 'TEXTAREA';
