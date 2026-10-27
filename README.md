@@ -1,20 +1,28 @@
 # Anthracite Calc
 
-NPN 2 石の直結帰還型ファズ（Fuzz Face 系）の動作点、利得、周波数特性を SPICE モデルから計算するブラウザ用ツールである。Trope のファズペダル Anthracite の定数決定に使用したものを公開用に再構成。
+NPN 2 石の直結帰還型ファズ（Fuzz Face 系）の動作点、利得、周波数特性を SPICE モデルから計算するブラウザ用ツールである。Trope のファズペダル [Anthracite](https://github.com/trope-oshw/anthracite) の定数決定に使用したものを公開用に再構成。
 
 <img src="schematic.svg" width="560">
 
 ## 使い方
 
-GitHub Pages で公開している。ブラウザで開けば、インストールなしで使える。
+### 導入
+
+GitHub Pages で公開している。ブラウザで開けばインストールなしで使える。
 
 https://mjm-12.github.io/anthracite-calculator/
 
-手元で動かす場合は、静的サーバで配信して `index.html` を開く。`bode.html` とのやり取りに BroadcastChannel を使うので、`file://` では一部が動作しない。
+オフラインで利用する場合はclone したうえで、
 
 ```
 python -m http.server 8765
 ```
+
+を実行し、 `index.html` を開く。`bode.html` とのやり取りに BroadcastChannel を使うため、`file://` では一部が動作しない。
+
+
+
+### 操作
 
 入力は Enter か欄を離れたときに確定し再計算する。抵抗と電流の欄では ↑↓ で E24 系列の隣の値に切り替え可能。
 
@@ -41,7 +49,7 @@ python -m http.server 8765
 
 Gummel-Poon の直流モデル（VAF, VAR, IKF, IKR, BR, NR, ISC, NC を含む）で節点方程式を Newton 法で解き、その動作点の偏微分から小信号モデルを構成する。容量は CJE, CJC, TF, TR からバイアス点で求める。
 
-LTspice 24 と比べた差は次のとおりだった。
+LTspice 24 と比べた差は次のとおり。多くの場合において必要十分な精度を確保している。
 
 | 項目 | 差 |
 |---|---|
@@ -50,17 +58,7 @@ LTspice 24 と比べた差は次のとおりだった。
 | 中域の $A_v$, $Z_{in}$ | 0.12 % 以内 |
 | 周波数特性 10 Hz〜1 MHz（6 回路） | 0.006 dB、0.02° 以内 |
 
-直流の RB, RE, RC と IRB, RBM、温度依存は計算しない。結果は TNOM での値で、$V_T = 25.85$ mV は 300 K に相当する。大振幅でファズとして歪ませたときの挙動は扱わない。
-
-## テスト
-
-```
-node tests/engine.test.js
-node tests/fit.test.js
-node tests/bode.test.js
-```
-
-依存パッケージを要しない。LTspice の参照値はテストに埋め込んである。
+直流の RB, RE, RC と IRB, RBM、温度依存は計算に用いない。結果は TNOM での値で、$V_T = 25.85$ mV は 300 K に相当する。なお、大振幅でファズとして歪ませたときの挙動は扱わない。
 
 ## ファイル
 
