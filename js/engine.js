@@ -389,9 +389,9 @@
         const c = normalizeCommon(inp, { rfIsOutput: useVe });
         const Ic1 = reqPos(inp.Ic1, 'I_C1');
         const Ic2 = reqPos(inp.Ic2, 'I_C2');
-        const vr = reqPos(inp.vrRatio, 'V_R の比');
-        const vc = reqPos(inp.vcRatio, 'V_C の比');
-        const ve = useVe ? reqPos(veIn, 'V_E の比') : 0;
+        const vr = reqPos(inp.vrRatio, 'V_R2 の比');
+        const vc = reqPos(inp.vcRatio, 'V_CE2 の比');
+        const ve = useVe ? reqPos(veIn, 'V_E2 の比') : 0;
         const S = vr + vc + ve;
 
         const gf = 1 / c.Rf, gbc1 = 1 / c.Rbc1;
@@ -420,7 +420,7 @@
             vbc1 += w * (n1 - vbc1); vbc2 += w * (n2 - vbc2);
         }
         if (!converged) {
-            throw new Error('順方向計算が収束しない: 指定した I_C と V_R:V_C ではトランジスタが深く飽和してしまう');
+            throw new Error('順方向計算が収束しない: 指定した I_C と V_R2:V_CE2 ではトランジスタが深く飽和してしまう');
         }
 
         if (!(VE2 > 0)) {
@@ -433,7 +433,7 @@
         if (useVe) {
             // KCL B1 solved for RF: (VE2-VB1)/RF + Ibc1 = IB1
             if (!(VE2 > VB1)) {
-                throw new Error('V_E が小さすぎる: V_E2 (' + fmtV(VE2) + ') < V_BE1 (' + fmtV(VB1) + ')');
+                throw new Error('V_E2 が小さすぎる: V_E2 (' + fmtV(VE2) + ') < V_BE1 (' + fmtV(VB1) + ')');
             }
             if (!(d1.Ib > Ibc1)) {
                 throw new Error('R_F が求まらない: R_BC1 の電流が I_B1 を超える');

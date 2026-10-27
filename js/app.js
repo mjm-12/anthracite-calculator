@@ -74,7 +74,7 @@
         const ve = $('ve-ratio');
         $('rf-mode').setAttribute('aria-pressed', String(on));
         for (const el of form.querySelectorAll('.ve-part')) el.hidden = !on;
-        $('ratio-label').innerHTML = on ? 'V<sub>R</sub>:V<sub>C</sub>:V<sub>E</sub>' : 'V<sub>R</sub>:V<sub>C</sub>';
+        $('ratio-label').innerHTML = 'V<sub>R2</sub>:V<sub>CE2</sub>'   /* V_E2 is named by the toggle; the longer label would not fit */;
         if (on && ve.value.trim() === '') ve.value = '0.2';
     }
 
@@ -264,9 +264,12 @@
             ratio = (vr / vc).toFixed(2) + ' : 1 : ' + (ve / vc).toFixed(2);
         }
         h += pairs([
-            ['V<sub>R</sub>', V(vr)], ['V<sub>C</sub>', V(vc)],
-            ['V<sub>E</sub>', V(ve)], ['V<sub>R</sub>:V<sub>C</sub>:V<sub>E</sub>', ratio],
+            ['V<sub>R2</sub>', V(vr)], ['V<sub>CE2</sub>', V(vc)],
+            ['V<sub>E2</sub>', V(ve)],
         ]);
+        // The ratio label is wider than a label column, so it gets a row of its own
+        h += '<table class="pairs">' + COLS + '<tbody><tr><th colspan="2">V<sub>R2</sub>:V<sub>CE2</sub>:V<sub>E2</sub></th>' +
+            '<td colspan="2">' + ratio + '</td></tr></tbody></table>';
 
         if (r.warnings && r.warnings.length) {
             h += '<ul class="warn">' + r.warnings.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul>';
