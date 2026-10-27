@@ -406,10 +406,11 @@ anthracite-calculator/
 
 ## 使用方法
 
-1. `index.html` をブラウザで開く
-2. SPICE モデルパラメータと回路定数を入力する
-3. 順方向か逆計算のタブを選ぶ
-4. 「計算実行」を押す
+1. `index.html` をブラウザで開く（ローカルの静的サーバ経由を推奨。`bode.html` との同期に BroadcastChannel を使う）
+2. モード（$I_C \to R$ / $R \to I_C$、Alt+1 / Alt+2）を選び、回路定数と SPICE モデルを入力する。値は Enter か欄を離れたときに確定し、再計算する
+3. 結果は右列に出る。import / export で CSV、→ ボタン（Ctrl+Enter）で結果を反対のモードへ代入する
+4. Q1 / Q2 の param でパラメータを直接編集し、fit で測定値からパラメータを推定する（`fit.html`）
+5. bode（Alt+B）で周波数特性を表示する。window で別ウィンドウ（`bode.html`）に出し、RV1 sweep（Alt+R）で RV1 を掃引する
 
 ---
 
