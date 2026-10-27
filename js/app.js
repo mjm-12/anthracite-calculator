@@ -239,9 +239,12 @@
         // AC
         const ac = r.ac || {};
         const avs = avS(ac, inp);
-        const gain = (v, db) => (isFinite(v) ? Number(v.toPrecision(4)) : '–') + '×  ' + X(db) + ' dB';
+        const gain = (v, db) => gainUnit === 'x'
+            ? (isFinite(v) ? Number(v.toPrecision(4)) + '×' : '–') : (isFinite(db) ? db.toFixed(1) + ' dB' : '–');
         const acl = [
-            ['A<sub>vs</sub>', '<b>' + gain(avs.AvS, avs.AvSdB) + '</b>'], ['A<sub>v</sub>', gain(ac.Av, ac.AvdB)],
+            ['A<sub>vs</sub> <button type="button" class="seg2 gu" id="gain-unit" aria-pressed="' + (gainUnit === 'x') +
+                '" aria-label="gain unit dB / ×" title="dB / × (Alt+G)"><span>dB</span><span>×</span></button>',
+             '<b>' + gain(avs.AvS, avs.AvSdB) + '</b>'], ['A<sub>v</sub>', gain(ac.Av, ac.AvdB)],
             ['R<sub>E</sub>', R(ac.RE)], ['R<sub>C</sub>', R(ac.RC)],
             ['Z<sub>in</sub>', R(ac.Zin)],
         ];
@@ -468,7 +471,7 @@
     // ---------- persistence (per-browser convenience) ----------
     // Full input state as typed (strings / booleans)
     function getState() {
-        const d = { mode: getMode(), rfmode: veMode() ? 've' : 'rf' };
+        const d = { mode: getMode(), rfmode: veMode() ? 've' : 'rf', 'gain-unit': gainUnit };
         for (const id of FIELD_IDS) d[id] = $(id).value;
         if (rfKept !== null) d.rf = rfKept;
         for (const id of BC_IDS) {
@@ -493,6 +496,7 @@
             if (open) kept[id] = v; else $(id).value = v;
         }
         if (d.rfmode === 've' || d.rfmode === 'rf') setVeMode(d.rfmode === 've');
+        if (d['gain-unit'] === 'dB' || d['gain-unit'] === 'x') gainUnit = d['gain-unit'];
         if (d.mode === 'reverse' || d.mode === 'forward') {
             form.querySelector('input[name="mode"][value="' + d.mode + '"]').checked = true;
         }
@@ -516,7 +520,7 @@
     // ---------- CSV export / import ----------
     // [CSV key, state key, unit]
     const CSV_PARAMS = [
-        ['mode', 'mode', ''], ['rfmode', 'rfmode', ''],
+        ['mode', 'mode', ''], ['rfmode', 'rfmode', ''], ['gain_unit', 'gain-unit', ''],
         ['vcc', 'vcc', 'V'], ['rf', 'rf', 'Ω'], ['rv1', 'rv1', 'Ω'], ['rv2', 'rv2', 'Ω'], ['rin', 'rin', 'Ω'],
         ['cin', 'cin', 'F'], ['ce2', 'ce2', 'F'], ['cout', 'cout', 'F'],
         ['ic1', 'ic1', 'A'], ['ic2', 'ic2', 'A'],
@@ -671,12 +675,23 @@
     }
     $('xfer').addEventListener('click', transfer);
 
+    // ---------- gain unit (dB / ×): display only; CSV results keep both ----------
+    let gainUnit = 'dB';
+    function toggleGainUnit() {
+        const hadFocus = document.activeElement && document.activeElement.id === 'gain-unit';
+        gainUnit = gainUnit === 'dB' ? 'x' : 'dB';
+        clearTimeout(timer);
+        compute();
+        if (hadFocus && $('gain-unit')) $('gain-unit').focus();
+    }
+    out.addEventListener('click', (e) => { if (e.target.closest('#gain-unit')) toggleGainUnit(); });
+
     // ---------- Bode dialog ----------
     const bdlg = $('bdlg'), bplot = $('bplot');
 
     function openBode() {
         bdlg.showModal();
-        $('cin').focus();
+        $('fstart').focus();
         clearTimeout(timer);
         compute();
         if (!last) drawBode(null);
@@ -724,12 +739,14 @@
         const f3 = sw.f3dB || {};
         const pk = sw.peak;
         sum.innerHTML =
-            '<dt>A<sub>vs</sub> mid</dt><dd>' + (isFinite(sw.midbandDB) ? sw.midbandDB.toFixed(1) + ' dB' : '–') + '</dd>' +
+            '<dt>A<sub>vs</sub> mid</dt><dd>' + (!isFinite(sw.midbandDB) ? '–' : gainUnit === 'x'
+                ? Number(Math.pow(10, sw.midbandDB / 20).toPrecision(4)) + '×' : sw.midbandDB.toFixed(1) + ' dB') + '</dd>' +
             '<dt>f<sub>L</sub></dt><dd>' + fEdge(f3.low, f3.lowFlag, rg) + '</dd>' +
             '<dt>f<sub>H</sub></dt><dd>' + fEdge(f3.high, f3.highFlag, rg) + '</dd>' +
             (pk && isFinite(pk.dB)   // peak.dB is relative to the mid-band level
-                ? '<dt>peak</dt><dd>' + (pk.dB >= 0 ? '+' : '−') + Math.abs(pk.dB).toFixed(1) +
-                  ' dB @ ' + formatSI(pk.f, 'Hz', 3) + '</dd>' : '');
+                ? '<dt>peak</dt><dd>' + (gainUnit === 'x' ? '×' + Math.pow(10, pk.dB / 20).toFixed(2)
+                    : (pk.dB >= 0 ? '+' : '−') + Math.abs(pk.dB).toFixed(1) + ' dB') +
+                  ' @ ' + formatSI(pk.f, 'Hz', 3) + '</dd>' : '');
         plotBode(sw, rg);
     }
 
@@ -927,6 +944,11 @@
 
     document.addEventListener('keydown', (e) => {
         if (document.getElementById('pdlg').open) return;
+        if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyG' || e.key === 'g' || e.key === 'G')) {
+            e.preventDefault();
+            toggleGainUnit();
+            return;
+        }
         if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyB' || e.key === 'b' || e.key === 'B')) {
             e.preventDefault();
             if ($('bdlg').open) $('bdlg').close(); else openBode();

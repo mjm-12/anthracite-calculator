@@ -70,6 +70,9 @@
                     <label for="rbc2">R<sub>BC2</sub></label><span class="pair bc"><button type="button" class="open" id="rbc2-open" aria-pressed="true" aria-label="R_BC2 open" title="R_BC2 open (∞)">OPEN</button><input id="rbc2" class="off" value="" placeholder="∞" data-step="e24" readonly></span><span class="u">Ω</span>
                     <label for="cbc1">C<sub>BC1</sub></label><span class="pair bc"><button type="button" class="open" id="cbc1-open" aria-pressed="true" aria-label="C_BC1 open" title="C_BC1 open (absent)">OPEN</button><input id="cbc1" class="off" value="" placeholder="–" data-step="e24" readonly></span><span class="u">F</span>
                     <label for="cbc2">C<sub>BC2</sub></label><span class="pair bc"><button type="button" class="open" id="cbc2-open" aria-pressed="true" aria-label="C_BC2 open" title="C_BC2 open (absent)">OPEN</button><input id="cbc2" class="off" value="" placeholder="–" data-step="e24" readonly></span><span class="u">F</span>
+                    <label for="cin" data-lbl="C_in">C<sub>in</sub></label><input id="cin" value="1u" data-step="e24" data-lbl="C_in"><span class="u">F</span>
+                    <label for="ce2" data-lbl="C_E2">C<sub>E2</sub></label><input id="ce2" value="20u" data-step="e24" data-lbl="C_E2"><span class="u">F</span>
+                    <label for="cout" data-lbl="C_out">C<sub>out</sub></label><input id="cout" value="10n" data-step="e24" data-lbl="C_out"><span class="u">F</span>
                 </div>
             </form>
         </div>
@@ -107,9 +110,6 @@
         <form id="bform" method="dialog" autocomplete="off">
             <div class="bhead">
                 <div class="bfields">
-                    <label for="cin" data-lbl="C_in">C<sub>in</sub></label><input id="cin" value="1u" data-step="e24" data-lbl="C_in"><span class="u">F</span>
-                    <label for="ce2" data-lbl="C_E2">C<sub>E2</sub></label><input id="ce2" value="20u" data-step="e24" data-lbl="C_E2"><span class="u">F</span>
-                    <label for="cout" data-lbl="C_out">C<sub>out</sub></label><input id="cout" value="10n" data-step="e24" data-lbl="C_out"><span class="u">F</span>
                     <label for="fstart">f</label><span class="pair"><input id="fstart" value="10" data-step="e24" data-lbl="f_start"><i>–</i><input id="fstop" value="1M" data-step="e24" data-lbl="f_stop" aria-label="f stop"></span><span class="u">Hz</span>
                 </div>
                 <dl class="bsum" id="bsum"></dl>

@@ -94,7 +94,9 @@ sub { font-size: 0.75em; line-height: 0; }
 
 .fields {
     display: grid;
-    grid-template-columns: 4.2em minmax(0, 1fr) 1.4em 4.2em minmax(0, 1fr) 1.4em;
+    /* label | value (max ~9em) | unit + gap | label | value | unit */
+    grid-template-columns: 3.6em minmax(0, 9em) 2.6em 3.6em minmax(0, 9em) 1.6em;
+    justify-content: start;
     gap: 4px 6px;
     align-items: center;
     padding-top: 8px;
@@ -210,11 +212,13 @@ table.primary td { font-size: 15px; font-weight: 600; }
 table.primary th { color: var(--fg); font-size: 15px; }
 table.primary td + td { font-weight: 400; }
 
-table.pairs th { width: 15%; }
-table.pairs td { width: 35%; }
-table.pairs th + td + th { padding-left: 18px; }
-
-table.q th { width: 30%; }
+/* results: compact label-value pairs, sized to content (calculator only) */
+#out table { width: auto; }
+#out th { width: 3.4em; }
+#out td { width: 6.8em; }
+#out table.pairs th + td + th { padding-left: 22px; }
+#out table.q td { width: 6.2em; }
+.fit-par th { width: auto; }
 
 .warn {
     margin: 0;
@@ -376,7 +380,7 @@ dialog.bode form { display: flex; flex-direction: column; height: 100%; gap: 6px
 .bhead { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
 .bfields {
     display: grid;
-    grid-template-columns: repeat(2, 3.2em 7em 1.6em);
+    grid-template-columns: 1.2em 12em 1.8em;
     gap: 4px 6px;
     align-items: center;
 }
@@ -395,3 +399,5 @@ dialog.bode form { display: flex; flex-direction: column; height: 100%; gap: 6px
 #bplot .mt { fill: var(--fg); font-size: 11px; font-family: inherit; }
 #bplot .ref { stroke: var(--mute); stroke-width: 1; stroke-dasharray: 5 4; }
 #bplot .ref3 { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 2 4; }
+.seg2.gu { display: inline-flex; height: 18px; font-size: 11px; vertical-align: middle; margin-left: 4px; }
+.seg2.gu span { padding: 0 5px; }
