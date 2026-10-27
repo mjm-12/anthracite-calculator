@@ -1,6 +1,6 @@
-# Fuzz Face Operating Point Calculator
+# Anthracite Calc
 
-Fuzz Face 回路（NPN 2 石の直結帰還型ファズ）の直流動作点と小信号特性を、SPICE モデルパラメータから計算する Web アプリケーション。
+NPN 2 石の直結帰還型ファズ（Fuzz Face に着想を得た回路。Trope のファズペダル Anthracite の設計に使う）の直流動作点と小信号特性を、SPICE モデルパラメータから計算する Web アプリケーション。
 
 ## 回路図
 
@@ -383,7 +383,7 @@ node tests/bode.test.js
 ## ファイル構成
 
 ```
-FuzzFace-OperatingPoint-Calculator/
+anthracite-calculator/
 ├── index.html              # メインページ
 ├── fit.html                # パラメータ推定の画面
 ├── css/
@@ -410,3 +410,7 @@ FuzzFace-OperatingPoint-Calculator/
 2. SPICE モデルパラメータと回路定数を入力する
 3. 順方向か逆計算のタブを選ぶ
 4. 「計算実行」を押す
+
+---
+
+Fuzz Face は Dunlop Manufacturing, Inc. の商標である。本ツールは同社と関係がない。

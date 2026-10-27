@@ -283,7 +283,7 @@
     if (target) {
         $('to-' + target).classList.add('target');
         $('to-' + target).title += ' (Ctrl+Enter)';
-        document.title = 'Fuzz Face OP · fit Q' + qp;
+        document.title = 'Anthracite Calc · fit Q' + qp;
     }
     // Ctrl+Enter sends to the target (inside the measurement table it still adds a row)
     document.addEventListener('keydown', (e) => {

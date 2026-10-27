@@ -584,7 +584,7 @@
         compute();   // results must match the current inputs
         const st = getState(), now = new Date();
         const rows = [['section', 'key', 'value', 'unit']];
-        rows.push(['meta', 'tool', 'Fuzz Face OP', '']);
+        rows.push(['meta', 'tool', 'Anthracite Calc', '']);
         rows.push(['meta', 'exported', now.toISOString(), '']);
         if (typeof FFEngine !== 'undefined' && FFEngine.version) rows.push(['meta', 'engine', String(FFEngine.version), '']);
         if (last && last.res.solver) {
@@ -599,7 +599,7 @@
             for (const r of resultRows(last.res, last.inp)) rows.push(r);
             for (const w of last.res.warnings || []) rows.push(['warning', '', w, '']);
         }
-        return { text: '\uFEFF' + toCsv(rows), name: 'fuzzface_' + st.mode + '_' + stamp(now) + '.csv' };
+        return { text: '\uFEFF' + toCsv(rows), name: 'anthracite_' + st.mode + '_' + stamp(now) + '.csv' };
     }
 
     function exportCsv() {

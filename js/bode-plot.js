@@ -118,7 +118,7 @@
         }
         const rows = [head];
         for (let i = 0; i < f.length; i++) rows.push(rowOf(i));
-        return { text: '﻿' + toCsv(rows), name: 'fuzzface_bode' + (b.sweep ? '_rv1sweep' : '') + '_' + stamp(new Date()) + '.csv' };
+        return { text: '﻿' + toCsv(rows), name: 'anthracite_bode' + (b.sweep ? '_rv1sweep' : '') + '_' + stamp(new Date()) + '.csv' };
     }
 
     function exportCsv(svg) {
