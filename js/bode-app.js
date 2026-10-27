@@ -7,12 +7,13 @@
     const RANGE_KEY = 'ffop.bode.range';
     let state = null;   // { inp, gainUnit, range }
     let timer = null;
+    const sweep = FFBode.sweepToggle($('bsweep'), document, () => schedule(0));
 
     function redraw() {
         if (!state) { el.msg.textContent = '計算機ページからの入力待ち'; return; }
         const rg = FFBode.range($('fstart'), $('fstop'));
         if (!rg) { el.msg.textContent = '入力値が不正: f'; return; }
-        FFBode.draw(el, state.inp, rg, state.gainUnit);
+        FFBode.draw(el, state.inp, rg, state.gainUnit, null, { sweep: sweep() });
     }
 
     function schedule(ms) { clearTimeout(timer); timer = setTimeout(redraw, ms === undefined ? 120 : ms); }

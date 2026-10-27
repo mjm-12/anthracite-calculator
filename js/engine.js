@@ -1075,7 +1075,9 @@
         // the level coming from fStart, f_H where it last falls below it before fStop.
         // Peaks and dips between them (LF peaking in the R_F / C_E2 / C_in loop is
         // physical and appears in LTspice too) do not move f_L or f_H.
-        const refDB = r.ac.AvSdB;
+        // Recomputed from p (not r.ac) so that AC-only overrides such as RV1 in the
+        // acSweep(result, inputs) form get their own reference.
+        const refDB = analyzeAC(p).AvSdB;
         let k = 0;
         for (let i = 1; i < n; i++) if (dB[i] > dB[k]) k = i;
         // Phase: shift the unwrapped curve so that it lies in (-180, 180] at the point

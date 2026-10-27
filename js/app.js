@@ -697,6 +697,7 @@
     const BODE_GEOM = 'ffop.bode.dialog';
     const bodeEl = { svg: bplot, sum: $('bsum'), msg: $('bmsg') };
     const chan = typeof BroadcastChannel === 'function' ? new BroadcastChannel(FFBode.CHANNEL) : null;
+    const bodeSweep = FFBode.sweepToggle($('bsweep'), bdlg, () => redrawBode());
 
     // default box: over the results column, ~60vh tall
     function defaultGeom() {
@@ -742,7 +743,7 @@
         if (!last) { bodeEl.msg.textContent = status.textContent; bplot.classList.add('stale'); return; }
         const rg = FFBode.range($('fstart'), $('fstop'));
         if (!rg) { bodeEl.msg.textContent = '入力値が不正: f'; return; }
-        FFBode.draw(bodeEl, last.inp, rg, gainUnit, last.res);
+        FFBode.draw(bodeEl, last.inp, rg, gainUnit, last.res, { sweep: bodeSweep() });
     }
 
     // called from render() after every successful evaluation
