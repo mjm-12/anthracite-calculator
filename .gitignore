@@ -1,6 +1,10 @@
 
-# Python関係全部
-Python/
+# Python: スクリプトのみ管理（市販フォントと生成画像は除外）
+Python/Fonts/
+Python/Images/
+
+# 旧回路図
+archive/
 
 
 # Python

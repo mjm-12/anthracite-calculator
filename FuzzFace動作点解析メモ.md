@@ -9,11 +9,11 @@ permalink: 4ca56beafaa944
 
 下図の様な回路が与えられると考える。
 
-![alt text](FuzzFace-Classic.png)
+![alt text](archive/FuzzFace-Classic.png)
 
 
 ## 問題設定
-![alt text](FuzzFace_eq.png)
+![alt text](archive/FuzzFace_eq.png)
 
 ゲインA
 $$

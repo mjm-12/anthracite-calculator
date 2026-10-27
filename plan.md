@@ -3,9 +3,9 @@
 
 # 問題
 
-![alt text](FuzzFace-Classic.svg)
+![alt text](archive/FuzzFace-Classic.svg)
 
-![alt text](FuzzFace-Classic.png)
+![alt text](archive/FuzzFace-Classic.png)
 
 （同一画像です）
 
