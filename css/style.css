@@ -129,7 +129,6 @@ select {
     background-position: right 6px center;
     background-size: 8px 5px;
 }
-option { direction: rtl; }
 input::placeholder { color: var(--mute); }
 
 input:focus, select:focus, textarea:focus {
