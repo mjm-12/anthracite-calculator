@@ -796,6 +796,36 @@
         return a * b / (a + b);
     }
 
+    // ---------------------------------------------------------------
+    // Topology. inputs.topology = 'anthracite' (default) | 'classic'.
+    // classic (original Fuzz Face): the emitter resistor is the fuzz pot RV1 itself
+    // (DC: R3 = RV1), its wiper bypassed to GND by C_E2; the collector load is
+    // R2t (Vcc side) + R2b (C2 side) with the output taken at their junction M.
+    //   inputs.fuzz in [0, 1] (default 1): fraction of RV1 between the wiper and GND
+    //     (1 = wiper at E2, full bypass). Pot model: E2 -- R_a -- W -- R_b -- GND with
+    //     R_a = (RV1 - 0.1)(1 - fuzz) + 0.05, R_b = (RV1 - 0.1) fuzz + 0.05 (50 mOhm end
+    //     contacts; R_a + R_b = RV1, the DC value).
+    //   reverse mode: R1, R2t, R2b, RV1 (R2 = R2t + R2b, R3 = RV1).
+    //   forward mode: R1, R2, R3 as usual; R2t = r2tFrac R2, R2b = R2 - R2t,
+    //     RV1 = R3 (the required pot value). r2tFrac default 470/8670.
+    // ---------------------------------------------------------------
+    const R2T_FRAC_DEFAULT = 470 / 8670;
+    function classicPot(RV1, fuzz) {
+        const r = RV1 - 0.1;
+        return { Ra: r * (1 - fuzz) + 0.05, Rb: r * fuzz + 0.05 };
+    }
+    function topologyOf(inputs) {
+        const t = inputs.topology === undefined || inputs.topology === null ? 'anthracite' : String(inputs.topology).toLowerCase();
+        if (t !== 'anthracite' && t !== 'classic') throw new Error('topology が不正: anthracite か classic を指定 (' + inputs.topology + ')');
+        if (t === 'anthracite') return null;
+        const fuzz = optDefault(inputs.fuzz, 1);
+        if (!isNum(fuzz) || fuzz < 0 || fuzz > 1) throw new Error('fuzz が不正: 0〜1 (' + fuzz + ')');
+        const frac = optDefault(inputs.r2tFrac, R2T_FRAC_DEFAULT);
+        if (!isNum(frac) || !(frac > 0) || !(frac < 1)) throw new Error('r2tFrac が不正: 0 より大きく 1 より小さい (' + frac + ')');
+        if (inputs.mode === 'reverse' && (!isNum(inputs.RV1) || !isFinite(inputs.RV1) || !(inputs.RV1 > 0.1))) throw new Error('RV1 (ファズ・ポット) が不正: 0.1 Ω より大きい有限値が必要 (' + inputs.RV1 + ')');
+        return { fuzz: fuzz, r2tFrac: frac };
+    }
+
     // p = { R1, R2, R3, Rf, RV1, RV2, Rbc1, Rbc2, ohmic, Rin,
     //       q1:{gpi,gmu,gm,gx,Rb,Re,Rc}, q2:{...} }
     // Rin (optional): source resistance. AvS = vC2/vs = Av Zin/(Rin + Zin), exact
@@ -822,11 +852,25 @@
             stamps.push(['row', b, ib, 1], ['row', c, ic, 1], ['row', e, ib, -1], ['row', e, ic, -1]);
         }
 
-        const RE = parallel(p.R3, p.RV1);
+        let RE, RC, OUTn = C2;
         cond(C1, GND, p.R1);
-        cond(C2, GND, p.R2);
-        cond(C2, GND, p.RV2);
-        cond(E2, GND, RE);
+        if (p.topology === 'classic') {
+            // Classic: C2 -- R2b -- M -- R2t -- Vcc (AC ground); output at M (C_out short,
+            // RV2 load). Emitter: E2 -- R_a -- wiper, wiper bypassed by C_E2 (short).
+            const pot = classicPot(p.RV1, p.fuzz);
+            RE = pot.Ra;
+            if (p.R2b > 0) { OUTn = nNodes++; cond(C2, OUTn, p.R2b); }
+            cond(OUTn, GND, p.R2t);
+            cond(OUTn, GND, p.RV2);
+            cond(E2, GND, RE);
+            RC = p.R2b + parallel(p.R2t, p.RV2);
+        } else {
+            RE = parallel(p.R3, p.RV1);
+            cond(C2, GND, p.R2);
+            cond(C2, GND, p.RV2);
+            cond(E2, GND, RE);
+            RC = parallel(p.R2, p.RV2);
+        }
         cond(E2, B1, p.Rf);
         cond(B1, C1, p.Rbc1);
         cond(C1, C2, p.Rbc2);
@@ -856,7 +900,7 @@
             if (!xs || !xs.every(isFinite)) throw new Error('小信号回路の行列が特異');
             const vs = [];
             idx.forEach((n, k) => { vs[n] = xs[k]; });
-            return { AvS: Math.abs(vs[C2]), AvSSigned: vs[C2], vB1: vs[B1] };
+            return { AvS: Math.abs(vs[OUTn]), AvSSigned: vs[OUTn], vB1: vs[B1] };
         }
         const idx = [];
         for (let i = 1; i < N; i++) idx.push(i);
@@ -868,11 +912,11 @@
         let iin = 0;
         for (let j = 0; j < N; j++) iin += G[B1][j] * v[j];
 
-        const AvSigned = v[C2];
+        const AvSigned = v[OUTn];
         const Av = Math.abs(AvSigned);
         const Zin = 1 / iin;
         const out = {
-            RE: RE, RC: parallel(p.R2, p.RV2), Av: Av, AvSigned: AvSigned, AvdB: 20 * Math.log10(Av),
+            RE: RE, RC: RC, Av: Av, AvSigned: AvSigned, AvdB: 20 * Math.log10(Av),
             Zin: Zin,
             nodes: { vC1: v[C1], vE2: v[E2], vC2: v[C2] },
         };
@@ -1088,10 +1132,19 @@
         const net = newNet(), GND = -1;
         const B1 = net.node('B1'), C1 = net.node('C1'), E2 = net.node('E2'), C2 = net.node('C2');
         net.R(C1, GND, p.R1);
-        net.R(C2, GND, p.R2);
-        net.R(E2, GND, p.R3);
-        if (p.RV1 === 0 && p.Ce2 === Infinity) throw new Error('RV1 = 0 かつ C_E2 = ∞ は扱えない');
-        net.RC(E2, GND, p.RV1, p.Ce2);
+        let M = C2;
+        if (p.topology === 'classic') {
+            if (p.R2b > 0) { M = net.node('M'); net.R(C2, M, p.R2b); }
+            net.R(M, GND, p.R2t);
+            const pot = classicPot(p.RV1, p.fuzz);
+            if (p.Ce2 === Infinity) net.R(E2, GND, pot.Ra);
+            else { const W = net.node('W'); net.R(E2, W, pot.Ra); net.R(W, GND, pot.Rb); net.C(W, GND, p.Ce2); }
+        } else {
+            net.R(C2, GND, p.R2);
+            net.R(E2, GND, p.R3);
+            if (p.RV1 === 0 && p.Ce2 === Infinity) throw new Error('RV1 = 0 かつ C_E2 = ∞ は扱えない');
+            net.RC(E2, GND, p.RV1, p.Ce2);
+        }
         let X = E2;
         if (cfg.tian) {
             X = net.node('X');
@@ -1124,8 +1177,8 @@
         };
         transistor(B1, C1, GND, p.q1);
         transistor(C1, C2, E2, p.q2);
-        let OUT = C2;
-        if (p.Cout !== Infinity) { OUT = net.node('OUT'); net.C(C2, OUT, p.Cout); }
+        let OUT = M;
+        if (p.Cout !== Infinity) { OUT = net.node('OUT'); net.C(M, OUT, p.Cout); }
         net.R(OUT, GND, p.RV2);
         net.out = OUT;
 
@@ -1264,7 +1317,7 @@
         const Rin = reqNonNeg(optDefault(inputs.Rin, 1000), 'R_in');
         return {
             R1: r.R1, R2: r.R2, R3: r.R3, Rf: r.Rf,
-            RV1: reqPosOrInf(inputs.RV1, 'RV1'),
+            RV1: r.topology === 'classic' ? r.RV1 : reqPosOrInf(inputs.RV1, 'RV1'),
             RV2: reqPosOrInf(optDefault(inputs.RV2, Infinity), 'RV2'),
             Rbc1: reqPosOrInf(optDefault(inputs.Rbc1, Infinity), 'R_BC1'),
             Rbc2: reqPosOrInf(optDefault(inputs.Rbc2, Infinity), 'R_BC2'),
@@ -1278,6 +1331,7 @@
             Cout: capIn(inputs.Cout, 10e-9, 'C_out'),
             ohmic: optDefault(inputs.acOhmic, true) !== false,
             source: normalizeSource(inputs.source, Rin),
+            topology: r.topology || 'anthracite', fuzz: r.fuzz, R2t: r.R2t, R2b: r.R2b,
             q1: r.q1.ss, q2: r.q2.ss,
         };
     }
@@ -1549,18 +1603,36 @@
     function evaluateNpn(inputs, pnp) {
         // Source resistance (AC only; C_in blocks DC). Default 1 kΩ, 0 allowed.
         const Rin = reqNonNeg(optDefault(inputs.Rin, 1000), 'R_in');
+        const cls = topologyOf(inputs);
+        let dcIn = inputs;
+        if (cls && inputs.mode === 'reverse') {
+            const R2t = reqPos(inputs.R2t, 'R2t'), R2b = reqNonNeg(optDefault(inputs.R2b, 0), 'R2b');
+            dcIn = Object.assign({}, inputs, { R2: R2t + R2b, R3: inputs.RV1 });
+            delete dcIn.R2t; delete dcIn.R2b;
+        } else if (cls) {
+            // forward: RV1 is an output (= R3); the DC solver does not use inputs.RV1
+            dcIn = Object.assign({}, inputs, { RV1: Infinity });
+        }
         let sol;
-        if (inputs.mode === 'forward') sol = solveForward(inputs);
-        else if (inputs.mode === 'reverse') sol = solveReverse(inputs);
+        if (inputs.mode === 'forward') sol = solveForward(dcIn);
+        else if (inputs.mode === 'reverse') sol = solveReverse(dcIn);
         else throw new Error('mode が不正: forward か reverse を指定 (' + inputs.mode + ')');
 
         const r = assemble(sol, inputs.mode);
         const c = sol.c;
+        r.topology = cls ? 'classic' : 'anthracite';
+        if (cls) {
+            if (inputs.mode === 'reverse') { r.R2t = inputs.R2t; r.R2b = optDefault(inputs.R2b, 0); }
+            else { r.R2t = cls.r2tFrac * sol.R2; r.R2b = sol.R2 - r.R2t; }
+            r.RV1 = sol.R3; r.fuzz = cls.fuzz; r.r2tFrac = r.R2t / sol.R2;
+            r.nodes.VM = c.Vcc - r.branch.I2 * r.R2t;     // DC voltage at the output tap M
+        }
         const ac = analyzeAC({
             R1: sol.R1, R2: sol.R2, R3: sol.R3, Rf: c.Rf,
-            RV1: c.RV1, RV2: c.RV2, Rbc1: c.Rbc1, Rbc2: c.Rbc2,
+            RV1: cls ? sol.R3 : c.RV1, RV2: c.RV2, Rbc1: c.Rbc1, Rbc2: c.Rbc2,
             ohmic: optDefault(inputs.acOhmic, true) !== false, q1: r.q1.ss, q2: r.q2.ss,
             Rin: Rin,
+            topology: r.topology, fuzz: r.fuzz, R2t: r.R2t, R2b: r.R2b,
         });
         r.ac = {
             RE: ac.RE, RC: ac.RC, Av: ac.Av, AvSigned: ac.AvSigned, AvdB: ac.AvdB,

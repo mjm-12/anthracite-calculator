@@ -11,7 +11,8 @@
 
     const FIELD_IDS = ['vcc', 'rf', 'vt', 'rv1', 'rv2', 'rin', 'cin', 'ce2', 'cout', 'fstart', 'fstop',
         'ic1', 'ic2', 'vr-ratio', 'vc-ratio', 've-ratio',
-        'r1', 'r2', 'r3', 'q1-model', 'q2-model'];
+        'r1', 'r2', 'r3', 'q1-model', 'q2-model',
+        'fuzz', 'r2t', 'r2b', 'rv1c', 'r2t-ratio', 'r2b-ratio'];
 
     // ---------- mode ----------
     function getMode() {
@@ -135,20 +136,21 @@
             Vcc: readVcc(),
             Rf: readRf(mode),
             Vt: num('vt', { positive: true, finite: true }),
-            RV1: num('rv1', { positive: true }),
+            topology: topology,
+            RV1: topology === 'classic' ? num('rv1c', { positive: true, finite: true }) : num('rv1', { positive: true }),
             RV2: num('rv2', { positive: true }),
             Rin: num('rin', { nonneg: true, finite: true }),
             Cin: num('cin', { positive: true, finite: true }),
             Ce2: num('ce2', { positive: true, finite: true }),
             Cout: num('cout', { positive: true, finite: true }),
-            Rbc1: bc('rbc1'),
-            Rbc2: bc('rbc2'),
-            Cbc1: bc('cbc1'),
-            Cbc2: bc('cbc2'),
+            Rbc1: topology === 'classic' ? Infinity : bc('rbc1'),
+            Rbc2: topology === 'classic' ? Infinity : bc('rbc2'),
+            Cbc1: topology === 'classic' ? 0 : bc('cbc1'),
+            Cbc2: topology === 'classic' ? 0 : bc('cbc2'),
             q1: model('q1'),
             q2: model('q2'),
         };
-        for (const id of ['ic1', 'ic2', 'vr-ratio', 'vc-ratio', 've-ratio', 'r1', 'r2', 'r3']) {
+        for (const id of ['ic1', 'ic2', 'vr-ratio', 'vc-ratio', 've-ratio', 'r1', 'r2', 'r3', 'r2t', 'r2b', 'rv1c', 'fuzz', 'r2t-ratio', 'r2b-ratio']) {
             $(id).classList.remove('bad');
         }
         if (mode === 'forward') {
@@ -159,8 +161,23 @@
             inp.veRatio = veMode() ? num('ve-ratio', { positive: true, finite: true }) : undefined;
         } else {
             inp.R1 = num('r1', { positive: true, finite: true });
-            inp.R2 = num('r2', { positive: true, finite: true });
-            inp.R3 = num('r3', { positive: true, finite: true });
+            if (topology === 'classic') {
+                inp.R2t = num('r2t', { positive: true, finite: true });
+                inp.R2b = num('r2b', { nonneg: true, finite: true });
+            } else {
+                inp.R2 = num('r2', { positive: true, finite: true });
+                inp.R3 = num('r3', { positive: true, finite: true });
+            }
+        }
+        if (topology === 'classic') {
+            // fuzz knob 0..10 (B taper) -> fuzz 0..1; R2t : R2b split -> r2tFrac (forward)
+            const k = num('fuzz', { nonneg: true, finite: true });
+            if (!(k <= 10) && !$('fuzz').classList.contains('bad')) { $('fuzz').classList.add('bad'); invalid.push($('fuzz')); }
+            inp.fuzz = Math.min(Math.max(k, 0), 10) / 10;
+            if (mode === 'forward') {
+                const a = num('r2t-ratio', { positive: true, finite: true }), b = num('r2b-ratio', { positive: true, finite: true });
+                inp.r2tFrac = a / (a + b);
+            }
         }
         return inp;
     }
@@ -215,8 +232,14 @@
             // each resistor with its current (columns 3-4 of the shared grid)
             const b = r.branch || {};
             rs.push(row(['R<sub>1</sub>', R(r.R1), I(b.I1)]));
-            rs.push(row(['R<sub>2</sub>', R(r.R2), I(b.I2)]));
-            rs.push(row(['R<sub>3</sub>', R(r.R3), I(b.I3)]));
+            if (r.topology === 'classic') {
+                rs.push(row(['R<sub>2t</sub>', R(r.R2t), I(b.I2)]));
+                rs.push(row(['R<sub>2b</sub>', R(r.R2b), I(b.I2)]));
+                rs.push(row(['RV<sub>1</sub>', R(r.RV1 !== undefined ? r.RV1 : r.R3), I(b.I3)]));
+            } else {
+                rs.push(row(['R<sub>2</sub>', R(r.R2), I(b.I2)]));
+                rs.push(row(['R<sub>3</sub>', R(r.R3), I(b.I3)]));
+            }
             if (r.RfComputed) rs.push(row(['R<sub>F</sub>', R(r.Rf), I(b.If)]));
             h += table(null, rs, 'primary');
         } else {
@@ -230,7 +253,7 @@
         h += pairs([
             ['V<sub>B1</sub>', V(r.nodes.VB1)], ['V<sub>C1</sub>', V(r.nodes.VC1)],
             ['V<sub>E2</sub>', V(r.nodes.VE2)], ['V<sub>C2</sub>', V(r.nodes.VC2)],
-        ]);
+        ].concat(r.topology === 'classic' && r.nodes.VM !== undefined ? [['V<sub>M</sub>', V(r.nodes.VM)]] : []));   // classic: output tap R2t/R2b
 
         // Per-transistor
         const q1 = r.q1, q2 = r.q2, qr = [];
@@ -407,6 +430,7 @@
         let nv = Math.round((v + dir * st) / st) * st;
         const min = el.dataset.min !== undefined ? parseFloat(el.dataset.min) : st;
         if (nv < min) nv = min;
+        if (el.dataset.max !== undefined && nv > parseFloat(el.dataset.max)) nv = parseFloat(el.dataset.max);
         nv = parseFloat(nv.toPrecision(10));
         el.value = /[a-z]/i.test(spec) ? formatEng(nv) : String(nv);   // plain ratios stay "0.2
         return true;
@@ -425,7 +449,9 @@
         const a = Math.abs(v);
         const t = [[1e6, 'M'], [1e3, 'k'], [1, ''], [1e-3, 'm'], [1e-6, 'u'], [1e-9, 'n'], [1e-12, 'p']];
         for (const [m, p] of t) {
-            if (a >= m * 0.9995) return String(parseFloat((v / m).toPrecision(6))) + p;
+            // pick the prefix after rounding to 6 digits (999.9996 -> "1k", 999.999 -> "999.999")
+            const x = parseFloat((v / m).toPrecision(6));
+            if (Math.abs(x) >= 1) return String(x) + p;
         }
         return String(v);
     }
@@ -500,6 +526,7 @@
     function getState() {
         const src = FFBode.getSrc();
         const d = { mode: getMode(), rfmode: veMode() ? 've' : 'rf', 'gain-unit': gainUnit, polarity: polarity,
+            topology: topology, topoSnap: topoSnap,
             source: src.source, vol: String(src.vol), tone: String(src.tone) };
         for (const id of FIELD_IDS) d[id] = $(id).value;
         if (rfKept !== null) d.rf = rfKept;
@@ -525,6 +552,8 @@
             if (open) kept[id] = v; else $(id).value = v;
         }
         if (d.polarity === 'npn' || d.polarity === 'pnp') { polarity = d.polarity; paintPolarity(); }   // values are stored signed
+        if (d.topology === 'anthracite' || d.topology === 'classic') { topology = d.topology; paintTopology(); }
+        if (d.topoSnap && typeof d.topoSnap === 'object') topoSnap = d.topoSnap;
         if (d.rfmode === 've' || d.rfmode === 'rf') setVeMode(d.rfmode === 've');
         {
             const sp = {};
@@ -556,7 +585,9 @@
     // ---------- CSV export / import ----------
     // [CSV key, state key, unit]
     const CSV_PARAMS = [
-        ['mode', 'mode', ''], ['polarity', 'polarity', ''], ['source', 'source', ''], ['vol', 'vol', ''], ['tone', 'tone', ''], ['rfmode', 'rfmode', ''], ['gain_unit', 'gain-unit', ''],
+        ['mode', 'mode', ''], ['polarity', 'polarity', ''], ['topology', 'topology', ''],
+        ['fuzz', 'fuzz', ''], ['r2t', 'r2t', 'Ω'], ['r2b', 'r2b', 'Ω'], ['rv1_pot', 'rv1c', 'Ω'],
+        ['r2t_split', 'r2t-ratio', ''], ['r2b_split', 'r2b-ratio', ''], ['source', 'source', ''], ['vol', 'vol', ''], ['tone', 'tone', ''], ['rfmode', 'rfmode', ''], ['gain_unit', 'gain-unit', ''],
         ['vcc', 'vcc', 'V'], ['rf', 'rf', 'Ω'], ['rv1', 'rv1', 'Ω'], ['rv2', 'rv2', 'Ω'], ['rin', 'rin', 'Ω'],
         ['cin', 'cin', 'F'], ['ce2', 'ce2', 'F'], ['cout', 'cout', 'F'],
         ['ic1', 'ic1', 'A'], ['ic2', 'ic2', 'A'],
@@ -582,6 +613,9 @@
         add('IC1', r.Ic1, 'A'); add('IC2', r.Ic2, 'A');
         const n = r.nodes || {};
         add('VB1', n.VB1, 'V'); add('VC1', n.VC1, 'V'); add('VE2', n.VE2, 'V'); add('VC2', n.VC2, 'V');
+        if (r.topology === 'classic') {
+            add('VM', n.VM, 'V'); add('R2t', r.R2t, 'Ω'); add('R2b', r.R2b, 'Ω'); add('RV1', r.RV1, 'Ω'); add('fuzz', r.fuzz, '');
+        }
         for (const q of ['q1', 'q2']) {
             const t = r[q] || {}, Q = q.toUpperCase() + '.';
             const ic = t.Ic !== undefined ? t.Ic : (q === 'q1' ? r.Ic1 : r.Ic2);
@@ -688,8 +722,14 @@
         const r = last.res;
         if (getMode() === 'forward') {
             $('r1').value = formatEng(r.R1);
-            $('r2').value = formatEng(r.R2);
-            $('r3').value = formatEng(r.R3);
+            if (r.topology === 'classic') {
+                $('r2t').value = formatEng(r.R2t);
+                $('r2b').value = formatEng(r.R2b);
+                $('rv1c').value = formatEng(r.RV1 !== undefined ? r.RV1 : r.R3);
+            } else {
+                $('r2').value = formatEng(r.R2);
+                $('r3').value = formatEng(r.R3);
+            }
             if (r.RfComputed && isFinite(r.Rf)) {
                 setVeMode(false);
                 setRfComputed(false);
@@ -728,7 +768,10 @@
         if (!ok && !$('vcc').classList.contains('bad')) { $('vcc').classList.add('bad'); invalid.push($('vcc')); }
         return v;
     }
-    function schemSrc(file) { return polarity === 'pnp' ? file.replace(/^schematic/, 'schematic_pnp') : file; }
+    function schemSrc(file) {
+        if (topology === 'classic') return file === 'schematic.svg' ? (polarity === 'pnp' ? 'schematic_classic_pnp.svg' : 'schematic_classic.svg') : file;
+        return polarity === 'pnp' ? file.replace(/^schematic/, 'schematic_pnp') : file;
+    }
     function paintPolarity() {
         $('polarity').setAttribute('aria-pressed', String(polarity === 'pnp'));
         document.body.classList.toggle('pnp', polarity === 'pnp');
@@ -757,6 +800,43 @@
         compute();
     }
     $('polarity').addEventListener('click', () => setPolarity(polarity === 'npn' ? 'pnp' : 'npn'));
+
+    // ---------- topology (Anthracite / Classic Fuzz Face) ----------
+    // Each topology keeps its own input values: switching stores the current ones in topoSnap
+    // and restores the other topology's (or its defaults). Polarity and mode are shared.
+    let topology = 'anthracite';
+    let topoSnap = {};
+    const SHARED_KEYS = ['mode', 'polarity', 'topology', 'topoSnap', 'gain-unit', 'source', 'vol', 'tone', 'fstart', 'fstop', 'q1-model', 'q2-model'];
+    function topoValues() {
+        const d = getState();
+        for (const k of SHARED_KEYS) delete d[k];
+        return d;
+    }
+    const TOPO_DEFAULTS = {};
+    function paintTopology() {
+        $('topology').setAttribute('aria-pressed', String(topology === 'classic'));
+        document.body.classList.toggle('classic', topology === 'classic');
+        paintPolarity();
+    }
+    function setTopology(t) {
+        if (t === topology) return;
+        topoSnap[topology] = topoValues();
+        topology = t;
+        const v = Object.assign({}, topoSnap[t] || TOPO_DEFAULTS[t]);
+        // classic forward targets differ per polarity (2SC8888-W / 2SA9999-W reproduce 33k / 470 / 8.2k / 1k)
+        if (!topoSnap[t] && t === 'classic' && polarity === 'pnp') Object.assign(v, { ic1: '231.1u', ic2: '673.9u', 'vr-ratio': '2.354' });
+        // V_CC sign follows the current polarity
+        if (typeof v.vcc === 'string') {
+            const n = parseEngineering(v.vcc);
+            if (isFinite(n) && n !== 0 && (polarity === 'pnp') !== (n < 0)) v.vcc = v.vcc.charAt(0) === '-' ? v.vcc.slice(1) : '-' + v.vcc;
+        }
+        applyState(v);
+        paintTopology();
+        if (curShown) drawCurrents(curShown);
+        clearTimeout(timer);
+        compute();
+    }
+    $('topology').addEventListener('click', () => setTopology(topology === 'classic' ? 'anthracite' : 'classic'));
 
     // ---------- gain unit (dB / ×): display only; CSV results keep both ----------
     let gainUnit = 'dB';
@@ -1024,8 +1104,9 @@
     }
     function drawCurrents(keys) {
         curShown = keys;
-        const set = curGeo && curGeo[polarity];
+        const set = curGeo && curGeo[(topology === 'classic' ? 'classic_' : '') + polarity];
         if (!set) { curov.innerHTML = ''; return; }
+        curov.setAttribute('viewBox', set.viewBox || curGeo.viewBox || '0 0 566.652 343.6');
         let s = '<defs><marker id="curhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
             '<path d="M0,0 L10,5 L0,10 z" class="curhd"/></marker></defs>';
         for (const k of keys) {
@@ -1097,6 +1178,11 @@
 
     document.addEventListener('keydown', (e) => {
         if (document.getElementById('pdlg').open) return;
+        if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyK' || e.key === 'k' || e.key === 'K')) {
+            e.preventDefault();
+            setTopology(topology === 'classic' ? 'anthracite' : 'classic');
+            return;
+        }
         if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyP' || e.key === 'p' || e.key === 'P')) {
             e.preventDefault();
             setPolarity(polarity === 'npn' ? 'pnp' : 'npn');
@@ -1134,6 +1220,13 @@
 
     $('rf-mode').addEventListener('click', () => toggleVeMode(false));
 
+    TOPO_DEFAULTS.anthracite = topoValues();
+    TOPO_DEFAULTS.classic = Object.assign({}, TOPO_DEFAULTS.anthracite, {
+        vcc: '9', rf: '100k', rv2: '500k', rin: '1k', cin: '1u', ce2: '20u', cout: '10n',
+        r1: '33k', r2t: '470', r2b: '8.2k', rv1c: '1k', fuzz: '10', 'r2t-ratio': '470', 'r2b-ratio': '8.2k',
+        // forward targets that reproduce R1 33k / R2t 470 / R2b 8.2k / RV1 1k (2SC8888-W, V_T 25.85 mV)
+        ic1: '231.531u', ic2: '668.212u', 'vr-ratio': '2.28349', 'vc-ratio': '1', 've-ratio': '0.2', rfmode: 'rf',
+    });
     load();
     updateSchematic();
     applyMode();   // load() may not have run applyState (no saved state)

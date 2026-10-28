@@ -520,3 +520,8 @@ textarea.wrongtype { border-color: var(--accent); }
 .bstab svg .ref { stroke: var(--mute); stroke-width: 1; stroke-dasharray: 5 4; fill: none; }
 .bstab svg .mk { stroke: var(--fg); stroke-width: 1; stroke-dasharray: 4 3; }
 .bstab svg .mt { fill: var(--fg); font-size: 10px; font-family: inherit; }
+
+/* topology: grid triplets shown only for one topology */
+.tg { display: contents; }
+body.classic .tg.anth, body:not(.classic) .tg.cls { display: none; }
+body.classic .schematic .layer { display: none; }

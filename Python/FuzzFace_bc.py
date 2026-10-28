@@ -222,6 +222,81 @@ def draw(layer='full', pnp=False):
     return d
 
 
+def draw_classic(pnp=False):
+    """Classic Fuzz Face: R2 split into R2b/R2t with the output tapped between them,
+    RV1 (pot to GND) on the Q2 emitter with C_E2 from its wiper to GND. No R_BC/C_BC."""
+    vcc_lbl = '$-V_{CC}$' if pnp else '$V_{CC}$'
+
+    def bjt():
+        return elm.BjtPnp(circle=True).flip() if pnp else elm.BjtNpn(circle=True)
+
+    with schemdraw.Drawing(show=False) as d:
+        d.config(fontsize=font_size, font=font_name, lw=1)
+
+        # --- source v_s + R_in + C_in / Q1 base ------------------------------
+        Vs = elm.SourceSin().down(1.8).label('$v_s$')
+        elm.GroundSignal(lead=False)
+        elm.Line().right(0.3).at(Vs.start)
+        Res().right(1.3).label('$R_{in}$', loc='top')
+        c = elm.Capacitor2(polar=True)
+        (c if pnp else c.reverse()).right(1.5).label('$C_{in}$', loc='top').scale(1.25)
+        elm.Line().right(0.9)
+        nRF = elm.Dot().label('$V_{B1}$', loc='top', ofst=(-0.45, 0))   # RF arrives from below
+        elm.Line().right(0.9)
+        Q1 = bjt().anchor('base').theta(0).label('$Q_1$', loc='right')
+        elm.Line().down(.2).at(Q1.emitter)
+        G1 = elm.GroundSignal(lead=False)
+
+        # --- Q1 collector: V_C1, R1 ------------------------------------------
+        elm.Line().up(0.45).at(Q1.collector)
+        nC1 = elm.Dot().label('$V_{C1}$', loc='right', ofst=(0.05, -0.25))
+        elm.Line().up(0.25)
+        Res().up(RL).label('$R_{1}$', loc='bottom')
+        elm.Line().up(0.25)
+        Vcc(lead=False).label(vcc_lbl, loc='top')
+
+        # --- Q2: base from V_C1, collector -> R2b -> tap -> R2t -> Vcc ----------
+        elm.Line().right(1.6).at(nC1.center)
+        Q2 = bjt().anchor('base').theta(0).label('$Q_2$', loc='right')
+        elm.Line().up(0.75).at(Q2.collector)
+        elm.Dot(radius=0.001).color('#00000000').at((float(Q2.collector[0]), float(Q2.collector[1]) + 0.45))             .label('$V_{C2}$', loc='right', ofst=0.1, color='black')
+        Res().up(RL).at((float(Q2.collector[0]), float(Q2.collector[1]) + 0.75)).label('$R_{2b}$', loc='bottom')
+        nOut = elm.Dot()                                    # C_out leaves right
+        Res().up(RL).label('$R_{2t}$', loc='top')
+        elm.Line().up(0.25)
+        Vcc(lead=False).label(vcc_lbl, loc='top')
+
+        # --- output: Cout -> RV2 ----------------------------------------------
+        elm.Capacitor().at(nOut.center).right(1.8).label('$C_{out}$', loc='top').scale(1.25)
+        RV2 = Pot().down(1.6).label('$RV_{2}$', loc='bottom', ofst=(-.5, -.45))
+        elm.GroundSignal(lead=False)
+        elm.Line().at(RV2.tap).right(0.8)
+        elm.Dot(open=True).label('output', loc='right')
+
+        # --- Q2 emitter: V_E2 -> RV1 (to GND), wiper -> C_E2 -> GND ---------------
+        elm.Line().down().at(Q2.emitter).toy(G1.end[1] - 0.45)
+        nE2 = elm.Dot().label('$V_{E2}$', loc='top', ofst=(-0.5, 0))
+        RV1 = Pot().down(1.8).label('$RV_{1}$', loc='top')
+        elm.GroundSignal(lead=False)
+        elm.Line().right(0.3).at(RV1.tap)
+        ce = elm.Capacitor2(polar=True)          # NPN: + at the wiper; PNP: + toward GND
+        (ce.reverse() if pnp else ce).right(1.3).label('$C_{E2}$', loc='top').scale(1.25)
+        elm.Line().down(0.3)
+        elm.GroundSignal(lead=False)
+
+        # --- RF: V_E2 -> V_B1 --------------------------------------------------
+        Res().at(nE2.center).left(2.4).label('$R_{F}$', loc='top')
+        LF = elm.Line().left().tox(nRF.center)
+        # invisible placeholder fixing the I_F hover-arrow position (as in draw())
+        IFL = elm.CurrentLabel(top=True, length=0.9, ofst=0.22).at(LF).label('$I_F$', ofst=-0.08).color('#00000000')
+        elm.Line().up().toy(nRF.center)
+
+    from types import SimpleNamespace
+    d.refs = dict(Q1=Q1, Q2=Q2, nC1=nC1, nRF=nRF, nE2=nE2, LF=LF, IFL=IFL,
+                  nR2=SimpleNamespace(center=(float(Q2.base[0]) - 0.8, float(Q2.base[1]))))
+    return d
+
+
 plt.rcParams['svg.hashsalt'] = 'fuzzface-bc'   # stable ids between runs
 
 image_dir = os.path.join(HERE, 'Images')
@@ -269,6 +344,19 @@ for pnp in (False, True):
         print('updated' if changed else 'unchanged', svg_path)
 
 
+# classic Fuzz Face (no optional branches): schematic_classic[_pnp].svg
+for pnp in (False, True):
+    tag = '_pnp' if pnp else ''
+    d = draw_classic(pnp)
+    svg_path = os.path.join(image_dir, f'FuzzFace_classic_ff{tag}.svg')
+    changed = save_if_changed(d, svg_path, transparent=True)
+    save_if_changed(d, os.path.join(image_dir, f'FuzzFace_classic_ff{tag}.png'), dpi=300, transparent=False)
+    root_svg = os.path.join(repo_root, f'schematic_classic{tag}.svg')
+    if changed or not os.path.exists(root_svg):
+        shutil.copyfile(svg_path, root_svg)
+    print('updated' if changed else 'unchanged', svg_path)
+
+
 # =========================
 # Current-arrow geometry for the UI hover highlight (schematic_currents.json)
 # Coordinates are in the schematic SVG's own user units (its viewBox).
@@ -291,7 +379,7 @@ def svg_mapper(d):
     return f, (round(72 * tb.width, 3), round(72 * tb.height, 3))
 
 
-def current_arrows(d, pnp):
+def current_arrows(d, pnp, classic=False):
     R = d.refs
     P = lambda a: np.array([float(a[0]), float(a[1])])
     out = {}
@@ -311,7 +399,10 @@ def current_arrows(d, pnp):
     # wire from the R_F dot into Q1 base, arrow above
     add('Ib1', 'I_B1', ((R['nRF'].center[0] + q1.base[0]) / 2, q1.base[1]), (sgn, 0), (0, 1))
     # Q1 emitter lead to ground, arrow on the right
-    add('Ie1', 'I_E1', (q1.emitter[0], q1.emitter[1] - 0.1), (0, -sgn), (1, 0), off=0.45)
+    if classic:   # R_F row sits close under Q1: put the arrow on the left of the lead
+        add('Ie1', 'I_E1', (q1.emitter[0], q1.emitter[1] - 0.12), (0, -sgn), (-1, 0), off=0.5)
+    else:
+        add('Ie1', 'I_E1', (q1.emitter[0], q1.emitter[1] - 0.1), (0, -sgn), (1, 0), off=0.45)
     # Q2 collector wire below V_C2, arrow on the left
     add('Ic2', 'I_C2', (q2.collector[0], q2.collector[1] + 0.3), (0, -sgn), (-1, 0))
     # V_C1 -> Q2 base wire near Q2, arrow above
@@ -319,7 +410,9 @@ def current_arrows(d, pnp):
     # Q2 emitter lead above V_E2, arrow on the left
     add('Ie2', 'I_E2', (q2.emitter[0], (q2.emitter[1] + R['nE2'].center[1]) / 2), (0, -sgn), (-1, 0))
     # R_BC1 / R_BC2: C1 -> B1 and C2 -> C1 (both leftward), arrow below the resistor
-    for key, text, el in (('Ibc1', 'I_BC1', R['RBC1']), ('Ibc2', 'I_BC2', R['RBC2'])):
+    for key, text, el in (('Ibc1', 'I_BC1', R.get('RBC1')), ('Ibc2', 'I_BC2', R.get('RBC2'))):
+        if el is None:
+            continue
         add(key, text, (P(el.start) + P(el.end)) / 2, (-1, 0), (0, -1))
     # I_F: reuse the drawn CurrentLabel arrow (E2 -> B1, leftward)
     pts = []
@@ -345,7 +438,19 @@ for pnp in (False, True):
         arr[k] = dict(x1=x1, y1=y1, x2=x2, y2=y2, lx=lx, ly=ly, text=a['text'])
     currents['pnp' if pnp else 'npn'] = arr
     print('mapper size', size)
-currents['viewBox'] = '0 0 %g %g' % size
+currents['viewBox'] = vb = '0 0 %g %g' % size
+for pnp in (False, True):
+    d = draw_classic(pnp)
+    d.save(os.path.join(tempfile.gettempdir(), 'ffbc_map.svg'), transparent=True)
+    f, csize = svg_mapper(d)
+    arr = {}
+    for k, a in current_arrows(d, pnp, classic=True).items():
+        (x1, y1), (x2, y2), (lx, ly) = f(*a['tail']), f(*a['head']), f(*a['label'])
+        arr[k] = dict(x1=x1, y1=y1, x2=x2, y2=y2, lx=lx, ly=ly, text=a['text'])
+    cvb = '0 0 %g %g' % csize
+    if cvb != vb:
+        arr['viewBox'] = cvb       # classic drawing has its own viewBox
+    currents['classic_pnp' if pnp else 'classic_npn'] = arr
 js = json.dumps(currents, separators=(',', ':'))
 jpath = os.path.join(repo_root, 'schematic_currents.json')
 if not os.path.exists(jpath) or open(jpath, encoding='utf-8').read() != js:
