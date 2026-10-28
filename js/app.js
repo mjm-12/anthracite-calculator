@@ -177,6 +177,12 @@
     //   [label, v1, v2] -> v1 in column 2, v2 spans columns 3-4 (right edge = column 4)
     const COLS = '<colgroup><col class="cl"><col class="cv"><col class="cl"><col class="cv"></colgroup>';
 
+    // result label with a "?" that shows the current(s) on the schematic (absolutely positioned: no width change)
+    function curLbl(html, keys) {
+        return '<span class="lblhelp">' + html + '<button type="button" class="help" data-cur="' + keys +
+            '" aria-label="show on schematic">?</button></span>';
+    }
+
     function row(cells, cls) {
         let h = '<th>' + cells[0] + '</th><td>' + cells[1] + '</td>';
         h += cells.length > 2 ? '<td colspan="2">' + cells[2] + '</td>' : '<td colspan="2"></td>';
@@ -231,9 +237,9 @@
         qr.push(row(['V<sub>BE</sub>', V(q1.Vbe, 4), V(q2.Vbe, 4)]));
         // I_C, I_B, I_E per transistor (magnitudes, like I_B; I_E = I_C + I_B)
         const Ic1 = q1.Ic !== undefined ? q1.Ic : r.Ic1, Ic2 = q2.Ic !== undefined ? q2.Ic : r.Ic2;
-        qr.push(row(['I<sub>C</sub>', I(Ic1), I(Ic2)]));
-        qr.push(row(['I<sub>B</sub>', I(q1.Ib), I(q2.Ib)]));
-        qr.push(row(['I<sub>E</sub>', I(Ic1 + q1.Ib), I(Ic2 + q2.Ib)]));
+        qr.push(row([curLbl('I<sub>C</sub>', 'Ic1,Ic2'), I(Ic1), I(Ic2)]));
+        qr.push(row([curLbl('I<sub>B</sub>', 'Ib1,Ib2'), I(q1.Ib), I(q2.Ib)]));
+        qr.push(row([curLbl('I<sub>E</sub>', 'Ie1,Ie2'), I(Ic1 + q1.Ib), I(Ic2 + q2.Ib)]));
         qr.push(row(['h<sub>FE</sub>', X(q1.hfe), X(q2.hfe)]));
         if (q1.beta_ac !== undefined) qr.push(row(['β<sub>ac</sub>', X(q1.beta_ac), X(q2.beta_ac)]));
         qr.push(row(['r<sub>ie</sub>', R(q1.rie), R(q2.rie)]));
@@ -244,9 +250,9 @@
         h += table(['', 'Q<sub>1</sub>', 'Q<sub>2</sub>'], qr, 'q');
 
         // Branch currents
-        const br = [['I<sub>F</sub>', I(r.branch.If)]];
-        if (isFinite(inp.Rbc1)) br.push(['I<sub>BC1</sub>', I(r.branch.Ibc1)]);
-        if (isFinite(inp.Rbc2)) br.push(['I<sub>BC2</sub>', I(r.branch.Ibc2)]);
+        const br = [[curLbl('I<sub>F</sub>', 'If'), I(r.branch.If)]];
+        if (isFinite(inp.Rbc1)) br.push([curLbl('I<sub>BC1</sub>', 'Ibc1'), I(r.branch.Ibc1)]);
+        if (isFinite(inp.Rbc2)) br.push([curLbl('I<sub>BC2</sub>', 'Ibc2'), I(r.branch.Ibc2)]);
         if (r.mode !== 'forward') {   // forward mode shows them beside R1..R3
             if (r.branch.I1 !== undefined) br.push(['I<sub>1</sub>', I(r.branch.I1)]);
             if (r.branch.I2 !== undefined) br.push(['I<sub>2</sub>', I(r.branch.I2)]);
@@ -738,6 +744,7 @@
             if (a && b && ta.value.trim() === a.trim()) ta.value = b;
         }
         paintPolarity();
+        if (curShown) drawCurrents(curShown);
         clearTimeout(timer);
         compute();
     }
@@ -986,6 +993,64 @@
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !helpPop.hidden) hideHelp(); });
     window.addEventListener('resize', () => { if (!helpPop.hidden) showHelp(); });
+
+    // ---------- current arrows on the schematic ("?" on I_C / I_B / I_E / I_F / I_BC labels) ----------
+    // Geometry: schematic_currents.json {npn:{key:{x1,y1,x2,y2,lx,ly,text}}, pnp:{...}}, loaded on first use.
+    const curov = $('curov');
+    let curGeo = null, curLoading = null, curPinned = null, curShown = null;
+    function loadCurGeo() {
+        if (curGeo) return Promise.resolve(curGeo);
+        if (!curLoading) {
+            curLoading = fetch('schematic_currents.json', { cache: 'no-store' })
+                .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+                .then((j) => (curGeo = j))
+                .catch(() => { curLoading = null; return null; });
+        }
+        return curLoading;
+    }
+    function svgEsc(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+    function curLabel(t) {   // "I_C1" -> I<tspan sub>C1</tspan>
+        const m = String(t).match(/^([A-Za-z])_?(.*)$/);
+        return m && m[2] ? svgEsc(m[1]) + '<tspan class="sub" dy="3">' + svgEsc(m[2]) + '</tspan>' : svgEsc(t);
+    }
+    function drawCurrents(keys) {
+        curShown = keys;
+        const set = curGeo && curGeo[polarity];
+        if (!set) { curov.innerHTML = ''; return; }
+        let s = '<defs><marker id="curhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+            '<path d="M0,0 L10,5 L0,10 z" class="curhd"/></marker></defs>';
+        for (const k of keys) {
+            const g = set[k];
+            if (!g) continue;
+            s += '<line class="curln" x1="' + g.x1 + '" y1="' + g.y1 + '" x2="' + g.x2 + '" y2="' + g.y2 + '" marker-end="url(#curhead)"/>';
+            if (g.text !== undefined && g.lx !== undefined) {
+                // (lx, ly) is the label centre
+                s += '<text class="curtx" x="' + g.lx + '" y="' + g.ly + '" text-anchor="' + (g.anchor || 'middle') + '" dominant-baseline="central">' + curLabel(g.text) + '</text>';
+            }
+        }
+        curov.innerHTML = s;
+        const r = curov.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > window.innerHeight) curov.scrollIntoView({ block: 'nearest' });
+    }
+    function showCurrents(btn) {
+        const keys = btn.dataset.cur.split(',');
+        loadCurGeo().then(() => drawCurrents(keys));
+    }
+    function clearCurrents() { curov.innerHTML = ''; curShown = null; curPinned = null; }
+    out.addEventListener('mouseover', (e) => { const b = e.target.closest('.help[data-cur]'); if (b) showCurrents(b); });
+    out.addEventListener('mouseout', (e) => {
+        const b = e.target.closest('.help[data-cur]');
+        if (b && !curPinned && document.activeElement !== b) clearCurrents();
+    });
+    out.addEventListener('focusin', (e) => { const b = e.target.closest('.help[data-cur]'); if (b) showCurrents(b); });
+    out.addEventListener('focusout', (e) => { if (e.target.closest('.help[data-cur]') && !curPinned) clearCurrents(); });
+    out.addEventListener('click', (e) => {   // tap: pin / unpin
+        const b = e.target.closest('.help[data-cur]');
+        if (!b) return;
+        if (curPinned === b.dataset.cur) clearCurrents(); else { curPinned = b.dataset.cur; showCurrents(b); }
+    });
+    document.addEventListener('pointerdown', (e) => { if (curPinned && !e.target.closest('.help[data-cur]')) clearCurrents(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && curShown) clearCurrents(); });
 
     // ---------- events ----------
     function isText(el) {

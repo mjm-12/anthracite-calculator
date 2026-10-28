@@ -485,3 +485,12 @@ input.dirty, textarea.dirty { color: var(--mute); border-bottom: 1px dashed var(
 .toprow { display: flex; align-items: center; gap: 10px; }
 .seg2.pol { height: 26px; font-size: 11px; letter-spacing: 0.03em; }
 textarea.wrongtype { border-color: var(--accent); }
+
+/* current arrows over the schematic */
+.curov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.curov .curln { stroke: var(--accent); stroke-width: 1.6; fill: none; }
+.curov .curhd { fill: var(--accent); }
+.curov .curtx { fill: var(--accent); font: 600 12px "Segoe UI", system-ui, sans-serif; }
+.curov .sub { font-size: 9px; }
+#out .lblhelp { display: inline-block; }
+#out .lblhelp .help { right: -14px; top: -4px; }

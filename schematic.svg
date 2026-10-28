@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-10-28T13:56:06.868769</dc:date>
+    <dc:date>2026-10-28T14:05:06.876631</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -659,14 +659,15 @@ L 220.752 283.12
    <g id="line2d_68">
     <path d="M 278.412 291.04 
 L 256.812 291.04 
-" clip-path="url(#pcf2515b1b9)" style="fill: none; stroke: #000000; stroke-linecap: round"/>
+" clip-path="url(#pcf2515b1b9)" style="fill: none; stroke: #000000; stroke-opacity: 0; stroke-linecap: round"/>
    </g>
    <g id="patch_13">
     <path d="M 256.812 294.64 
 L 246.012 291.04 
 L 256.812 287.44 
+L 256.812 294.64 
 z
-" clip-path="url(#pcf2515b1b9)"/>
+" clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
    <g id="line2d_69">
     <path d="M 220.752 283.12 
@@ -1150,7 +1151,7 @@ z
    </g>
    <g id="text_22">
     <!-- $I_F$ -->
-    <g transform="translate(256.612 306.785) scale(0.16 -0.16)">
+    <g style="opacity: 0" transform="translate(256.612 306.785) scale(0.16 -0.16)">
      <defs>
       <path id="HelveticaNeueLTPro-Roman-49" d="M 525 0 
 L 1133 0 

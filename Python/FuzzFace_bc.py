@@ -158,7 +158,7 @@ def draw(layer='full', pnp=False):
 
         # R_BC1 (inner) and C_BC1 (outer): V_B1 -> up -> right to V_C1
         elm.Line().up().at(nR1.center).toy(nR1t.center).color(r1)
-        Res().right().tox(nR1t.center).label('$R_{BC1}$', loc='top').color(r1)
+        RBC1 = Res().right().tox(nR1t.center).label('$R_{BC1}$', loc='top').color(r1)
         elm.Line().up().at(nK1.center).toy(nK1t.center).color(k1)
         Cap().right().tox(nK1t.center).label('$C_{BC1}$', loc='top').color(k1)
 
@@ -183,7 +183,7 @@ def draw(layer='full', pnp=False):
 
         # R_BC2 (inner) and C_BC2 (outer): V_C1 -> up -> right to V_C2
         elm.Line().up().at(nR2.center).toy(nR2t.center).color(r2)
-        Res().right().tox(nR2t.center).label('$R_{BC2}$', loc='top').color(r2)
+        RBC2 = Res().right().tox(nR2t.center).label('$R_{BC2}$', loc='top').color(r2)
         elm.Line().up().at(nK2.center).toy(nK2t.center).color(k2)
         Cap().right().tox(nK2t.center).label('$C_{BC2}$', loc='top').color(k2)
 
@@ -211,9 +211,14 @@ def draw(layer='full', pnp=False):
         Res().at(nE2.center).left(2.4).label('$R_{F}$', loc='top')
         LF = elm.Line().left().tox(nRF.center)
         # I_F reference direction: V_E2 -> V_B1 (engine: I_F = (V_E2 - V_B1)/R_F)
-        elm.CurrentLabel(top=True, length=0.9, ofst=0.22).at(LF).label('$I_F$', ofst=-0.08)
+        # Invisible placeholder for the I_F arrow: not drawn (the UI shows it on hover from
+        # schematic_currents.json), but kept so its position and the bounding box stay fixed.
+        IFL = elm.CurrentLabel(top=True, length=0.9, ofst=0.22).at(LF).label('$I_F$', ofst=-0.08).color('#00000000')
         elm.Line().up().toy(nRF.center)
 
+    # key elements, used to export current-arrow geometry (schematic_currents.json)
+    d.refs = dict(Q1=Q1, Q2=Q2, nC1=nC1, nRF=nRF, nR2=nR2, nR2t=nR2t, nE2=nE2,
+                  LF=LF, IFL=IFL, RBC1=RBC1, RBC2=RBC2)
     return d
 
 
@@ -262,3 +267,87 @@ for pnp in (False, True):
         if changed or not os.path.exists(root_svg):
             shutil.copyfile(svg_path, root_svg)
         print('updated' if changed else 'unchanged', svg_path)
+
+
+# =========================
+# Current-arrow geometry for the UI hover highlight (schematic_currents.json)
+# Coordinates are in the schematic SVG's own user units (its viewBox).
+import json
+import numpy as np
+
+ARROW_L = 0.65   # arrow length [drawing units]
+SIDE = 0.3       # offset of the arrow from its wire [drawing units]
+
+
+def svg_mapper(d):
+    """drawing units -> SVG user units (pt), same crop as d.save(bbox_inches='tight', pad 0)."""
+    fig, ax = d.fig.fig, d.fig.ax
+    r = fig.canvas.get_renderer()
+    tb = fig.get_tightbbox(r, bbox_extra_artists=ax.get_default_bbox_extra_artists())  # inches
+
+    def f(x, y):
+        px, py = ax.transData.transform((x, y)) / fig.dpi   # inches from fig origin
+        return (round(72 * (px - tb.x0), 2), round(72 * (tb.y1 - py), 2))
+    return f, (round(72 * tb.width, 3), round(72 * tb.height, 3))
+
+
+def current_arrows(d, pnp):
+    R = d.refs
+    P = lambda a: np.array([float(a[0]), float(a[1])])
+    out = {}
+
+    def add(key, text, c, direction, side, off=SIDE):
+        c, u, s = P(c), np.array(direction, float), np.array(side, float)
+        u /= np.linalg.norm(u)
+        tail = c + s * off - u * ARROW_L / 2
+        head = c + s * off + u * ARROW_L / 2
+        lab = c + s * (off + 0.32)
+        out[key] = dict(tail=tail, head=head, label=lab, text=text)
+
+    sgn = -1 if pnp else 1           # PNP: Ic, Ib, Ie reversed
+    q1, q2 = R['Q1'], R['Q2']
+    # Q1 collector stub (collector -> V_C1), arrow on the left
+    add('Ic1', 'I_C1', (q1.collector[0], q1.collector[1] + 0.42), (0, -sgn), (-1, 0), off=0.38)
+    # wire from the R_F dot into Q1 base, arrow above
+    add('Ib1', 'I_B1', ((R['nRF'].center[0] + q1.base[0]) / 2, q1.base[1]), (sgn, 0), (0, 1))
+    # Q1 emitter lead to ground, arrow on the right
+    add('Ie1', 'I_E1', (q1.emitter[0], q1.emitter[1] - 0.1), (0, -sgn), (1, 0), off=0.45)
+    # Q2 collector wire below V_C2, arrow on the left
+    add('Ic2', 'I_C2', (q2.collector[0], q2.collector[1] + 0.3), (0, -sgn), (-1, 0))
+    # V_C1 -> Q2 base wire near Q2, arrow above
+    add('Ib2', 'I_B2', ((R['nR2'].center[0] + q2.base[0]) / 2, q2.base[1]), (sgn, 0), (0, 1))
+    # Q2 emitter lead above V_E2, arrow on the left
+    add('Ie2', 'I_E2', (q2.emitter[0], (q2.emitter[1] + R['nE2'].center[1]) / 2), (0, -sgn), (-1, 0))
+    # R_BC1 / R_BC2: C1 -> B1 and C2 -> C1 (both leftward), arrow below the resistor
+    for key, text, el in (('Ibc1', 'I_BC1', R['RBC1']), ('Ibc2', 'I_BC2', R['RBC2'])):
+        add(key, text, (P(el.start) + P(el.end)) / 2, (-1, 0), (0, -1))
+    # I_F: reuse the drawn CurrentLabel arrow (E2 -> B1, leftward)
+    pts = []
+    for seg in R['IFL'].segments:
+        if hasattr(seg, 'path'):
+            pts += [R['IFL'].transform.transform(p) for p in seg.path]
+    pts = np.array([[float(p[0]), float(p[1])] for p in pts])
+    y = pts[:, 1].mean()
+    xr, xl = pts[:, 0].max(), pts[:, 0].min()
+    out['If'] = dict(tail=np.array([xr, y]), head=np.array([xl, y]),
+                     label=np.array([(xl + xr) / 2, y - 0.32]), text='I_F')
+    return out
+
+
+currents = {}
+for pnp in (False, True):
+    d = draw('base', pnp)
+    d.save(os.path.join(tempfile.gettempdir(), 'ffbc_map.svg'), transparent=True)  # realise figure
+    f, size = svg_mapper(d)
+    arr = {}
+    for k, a in current_arrows(d, pnp).items():
+        (x1, y1), (x2, y2), (lx, ly) = f(*a['tail']), f(*a['head']), f(*a['label'])
+        arr[k] = dict(x1=x1, y1=y1, x2=x2, y2=y2, lx=lx, ly=ly, text=a['text'])
+    currents['pnp' if pnp else 'npn'] = arr
+    print('mapper size', size)
+currents['viewBox'] = '0 0 %g %g' % size
+js = json.dumps(currents, separators=(',', ':'))
+jpath = os.path.join(repo_root, 'schematic_currents.json')
+if not os.path.exists(jpath) or open(jpath, encoding='utf-8').read() != js:
+    open(jpath, 'w', encoding='utf-8').write(js)
+print('currents ->', jpath, len(js), 'bytes')
