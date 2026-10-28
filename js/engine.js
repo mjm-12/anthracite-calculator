@@ -1067,13 +1067,13 @@
 
     const PICKUP_PRESETS = {
         texasSpecialNeck: {
-            type: 'pickup', name: 'Fender Custom Shop Texas Special Neck',
+            type: 'pickup', name: 'Fender Custom Shop Texas Special Neck (beta)',
             DCR: 5.689e3, Ls: 2.196, Cp: 127.35e-12, Rp: 184.34e3,
             vol: { R: 250e3, pos: 10, taper: 'A' }, tone: { R: 250e3, C: 0.022e-6, pos: 10, taper: 'A' },
             bleed: null, cable: 650e-12,
         },
         gibson57ClassicNeck: {
-            type: 'pickup', name: 'Gibson 57 Classic Neck',
+            type: 'pickup', name: 'Gibson 57 Classic Neck (beta)',
             DCR: 7.218e3, Ls: 4.053, Cp: 187.23e-12, Rp: 299.9e3,
             vol: { R: 500e3, pos: 10, taper: 'A' }, tone: { R: 500e3, C: 0.022e-6, pos: 10, taper: 'A' },
             bleed: { R: 680e3, C: 390e-12 }, cable: 650e-12,
