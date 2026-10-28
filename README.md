@@ -90,6 +90,12 @@ LTspice 24 と比べた差は次のとおり。多くの場合において必要
 | `schematic*.svg`, `Python/FuzzFace_bc.py` | 回路図（Anthracite / Classic、NPN / PNP。Anthracite は $R_{BC}$, $C_{BC}$ の重ね合わせ用を含む）と生成スクリプト |
 | `schematic_currents.json` | 電流の矢印を回路図上に描く座標 |
 
+## ライセンス
+
+Copyright 2026 Hayata Yamamoto (山本回路設計)
+
+GNU General Public License v3.0 or later（GPL-3.0-or-later）で公開する。全文は [LICENSE](LICENSE) を参照。
+
 ---
 
 Fuzz Face は Dunlop Manufacturing, Inc. の商標である。本ツールは同社と関係がない。
