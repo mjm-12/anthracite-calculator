@@ -221,7 +221,7 @@ thead th:first-child { text-align: left; }
 
 table.primary td { font-size: 15px; font-weight: 600; }
 table.primary th { color: var(--fg); font-size: 15px; }
-table.primary td + td { font-weight: 400; }
+table.primary td + td { font-weight: 400; font-size: 13px; color: var(--mute); }
 
 /* results: compact label-value pairs, sized to content (calculator only) */
 #out table { table-layout: fixed; width: calc(2 * (4em + 7.6em)); }
@@ -480,3 +480,8 @@ input.dirty, textarea.dirty { color: var(--mute); border-bottom: 1px dashed var(
 .pop blockquote p { margin: 0; }
 .pop footer { margin-top: 6px; font-size: 10.5px; color: var(--mute); }
 @media (max-width: 640px) { .pop { flex-direction: column; } .pop figure { width: 100%; } }
+
+/* NPN / PNP toggle next to the mode switch */
+.toprow { display: flex; align-items: center; gap: 10px; }
+.seg2.pol { height: 26px; font-size: 11px; letter-spacing: 0.03em; }
+textarea.wrongtype { border-color: var(--accent); }

@@ -23,10 +23,13 @@
             </figure>
 
             <form class="inputs" id="inputs" autocomplete="off" onsubmit="return false">
-                <fieldset class="seg">
-                    <label title="Alt+1"><input type="radio" name="mode" value="forward" checked><span>I<sub>C</sub> → R</span></label>
-                    <label title="Alt+2"><input type="radio" name="mode" value="reverse"><span>R → I<sub>C</sub></span></label>
-                </fieldset>
+                <div class="toprow">
+                    <fieldset class="seg">
+                        <label title="Alt+1"><input type="radio" name="mode" value="forward" checked><span>I<sub>C</sub> → R</span></label>
+                        <label title="Alt+2"><input type="radio" name="mode" value="reverse"><span>R → I<sub>C</sub></span></label>
+                    </fieldset>
+                    <button type="button" class="seg2 pol" id="polarity" aria-pressed="false" aria-label="transistor polarity NPN / PNP" title="NPN / PNP (Alt+P)"><span>NPN</span><span>PNP</span></button>
+                </div>
 
                 <div class="fields">
                     <label for="vcc">V<sub>CC</sub></label><input id="vcc" value="5.6" data-step="0.5" autofocus><span class="u">V</span>

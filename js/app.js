@@ -112,7 +112,9 @@
     function model(id) {
         const el = $(id + '-model');
         const p = parseSpiceModel(el.value);
+        // a model of the other polarity is kept as typed; the engine reports the type error
         const ok = p.bad.length === 0 && p.Is > 0 && p.Bf > 0 && p.Nf > 0;
+        el.classList.toggle('wrongtype', !!(p.type && String(p.type).toLowerCase() !== polarity));
         el.classList.toggle('bad', !ok);
         if (!ok) invalid.push(el);
         $(id + '-parsed').textContent = ['IS', 'BF', 'NF', 'ISE', 'NE', 'BR', 'ISC', 'NC', 'VAF']
@@ -129,7 +131,8 @@
         const mode = getMode();
         const inp = {
             mode: mode,
-            Vcc: num('vcc', { positive: true, finite: true }),
+            polarity: polarity,
+            Vcc: readVcc(),
             Rf: readRf(mode),
             Vt: num('vt', { positive: true, finite: true }),
             RV1: num('rv1', { positive: true }),
@@ -203,10 +206,12 @@
         // Primary result
         if (r.mode === 'forward') {
             const rs = [];
-            rs.push(row(['R<sub>1</sub>', R(r.R1)]));
-            rs.push(row(['R<sub>2</sub>', R(r.R2)]));
-            rs.push(row(['R<sub>3</sub>', R(r.R3)]));
-            if (r.RfComputed) rs.push(row(['R<sub>F</sub>', R(r.Rf)]));
+            // each resistor with its current (columns 3-4 of the shared grid)
+            const b = r.branch || {};
+            rs.push(row(['R<sub>1</sub>', R(r.R1), I(b.I1)]));
+            rs.push(row(['R<sub>2</sub>', R(r.R2), I(b.I2)]));
+            rs.push(row(['R<sub>3</sub>', R(r.R3), I(b.I3)]));
+            if (r.RfComputed) rs.push(row(['R<sub>F</sub>', R(r.Rf), I(b.If)]));
             h += table(null, rs, 'primary');
         } else {
             h += table(null, [
@@ -224,7 +229,11 @@
         // Per-transistor
         const q1 = r.q1, q2 = r.q2, qr = [];
         qr.push(row(['V<sub>BE</sub>', V(q1.Vbe, 4), V(q2.Vbe, 4)]));
+        // I_C, I_B, I_E per transistor (magnitudes, like I_B; I_E = I_C + I_B)
+        const Ic1 = q1.Ic !== undefined ? q1.Ic : r.Ic1, Ic2 = q2.Ic !== undefined ? q2.Ic : r.Ic2;
+        qr.push(row(['I<sub>C</sub>', I(Ic1), I(Ic2)]));
         qr.push(row(['I<sub>B</sub>', I(q1.Ib), I(q2.Ib)]));
+        qr.push(row(['I<sub>E</sub>', I(Ic1 + q1.Ib), I(Ic2 + q2.Ib)]));
         qr.push(row(['h<sub>FE</sub>', X(q1.hfe), X(q2.hfe)]));
         if (q1.beta_ac !== undefined) qr.push(row(['β<sub>ac</sub>', X(q1.beta_ac), X(q2.beta_ac)]));
         qr.push(row(['r<sub>ie</sub>', R(q1.rie), R(q2.rie)]));
@@ -238,9 +247,11 @@
         const br = [['I<sub>F</sub>', I(r.branch.If)]];
         if (isFinite(inp.Rbc1)) br.push(['I<sub>BC1</sub>', I(r.branch.Ibc1)]);
         if (isFinite(inp.Rbc2)) br.push(['I<sub>BC2</sub>', I(r.branch.Ibc2)]);
-        if (r.branch.I1 !== undefined) br.push(['I<sub>1</sub>', I(r.branch.I1)]);
-        if (r.branch.I2 !== undefined) br.push(['I<sub>2</sub>', I(r.branch.I2)]);
-        if (r.branch.I3 !== undefined) br.push(['I<sub>3</sub>', I(r.branch.I3)]);
+        if (r.mode !== 'forward') {   // forward mode shows them beside R1..R3
+            if (r.branch.I1 !== undefined) br.push(['I<sub>1</sub>', I(r.branch.I1)]);
+            if (r.branch.I2 !== undefined) br.push(['I<sub>2</sub>', I(r.branch.I2)]);
+            if (r.branch.I3 !== undefined) br.push(['I<sub>3</sub>', I(r.branch.I3)]);
+        }
         h += pairs(br);
 
         // AC
@@ -260,8 +271,8 @@
         const vr = sw.VR, vc = sw.VC;
         const ve = sw.VE !== undefined ? sw.VE : (r.nodes ? r.nodes.VE2 : NaN);
         let ratio = '–';
-        if (vc > 0 && isFinite(vr) && isFinite(ve)) {   // normalised to V_C = 1
-            ratio = (vr / vc).toFixed(2) + ' : 1 : ' + (ve / vc).toFixed(2);
+        if (vc !== 0 && isFinite(vc) && isFinite(vr) && isFinite(ve)) {   // magnitudes (PNP values are negative), V_C = 1
+            ratio = Math.abs(vr / vc).toFixed(2) + ' : 1 : ' + Math.abs(ve / vc).toFixed(2);
         }
         h += pairs([
             ['V<sub>R2</sub>', V(vr)], ['V<sub>CE2</sub>', V(vc)],
@@ -481,7 +492,7 @@
     // ---------- persistence (per-browser convenience) ----------
     // Full input state as typed (strings / booleans)
     function getState() {
-        const d = { mode: getMode(), rfmode: veMode() ? 've' : 'rf', 'gain-unit': gainUnit };
+        const d = { mode: getMode(), rfmode: veMode() ? 've' : 'rf', 'gain-unit': gainUnit, polarity: polarity };
         for (const id of FIELD_IDS) d[id] = $(id).value;
         if (rfKept !== null) d.rf = rfKept;
         for (const id of BC_IDS) {
@@ -505,6 +516,7 @@
             setOpen(id, open);
             if (open) kept[id] = v; else $(id).value = v;
         }
+        if (d.polarity === 'npn' || d.polarity === 'pnp') { polarity = d.polarity; paintPolarity(); }   // values are stored signed
         if (d.rfmode === 've' || d.rfmode === 'rf') setVeMode(d.rfmode === 've');
         if (d['gain-unit'] === 'dB' || d['gain-unit'] === 'x') { gainUnit = d['gain-unit']; paintGainUnit(); }
         if (d.mode === 'reverse' || d.mode === 'forward') {
@@ -530,7 +542,7 @@
     // ---------- CSV export / import ----------
     // [CSV key, state key, unit]
     const CSV_PARAMS = [
-        ['mode', 'mode', ''], ['rfmode', 'rfmode', ''], ['gain_unit', 'gain-unit', ''],
+        ['mode', 'mode', ''], ['polarity', 'polarity', ''], ['rfmode', 'rfmode', ''], ['gain_unit', 'gain-unit', ''],
         ['vcc', 'vcc', 'V'], ['rf', 'rf', 'Ω'], ['rv1', 'rv1', 'Ω'], ['rv2', 'rv2', 'Ω'], ['rin', 'rin', 'Ω'],
         ['cin', 'cin', 'F'], ['ce2', 'ce2', 'F'], ['cout', 'cout', 'F'],
         ['ic1', 'ic1', 'A'], ['ic2', 'ic2', 'A'],
@@ -558,7 +570,9 @@
         add('VB1', n.VB1, 'V'); add('VC1', n.VC1, 'V'); add('VE2', n.VE2, 'V'); add('VC2', n.VC2, 'V');
         for (const q of ['q1', 'q2']) {
             const t = r[q] || {}, Q = q.toUpperCase() + '.';
-            add(Q + 'Vbe', t.Vbe, 'V'); add(Q + 'Ib', t.Ib, 'A'); add(Q + 'hfe', t.hfe, '');
+            const ic = t.Ic !== undefined ? t.Ic : (q === 'q1' ? r.Ic1 : r.Ic2);
+            add(Q + 'Vbe', t.Vbe, 'V'); add(Q + 'Ic', ic, 'A'); add(Q + 'Ib', t.Ib, 'A');
+            add(Q + 'Ie', ic + t.Ib, 'A'); add(Q + 'hfe', t.hfe, '');
             add(Q + 'beta_ac', t.beta_ac, ''); add(Q + 'rie', t.rie, 'Ω'); add(Q + 'ro', t.ro, 'Ω');
             add(Q + 'Vce', t.Vce, 'V'); add(Q + 'Vbc', t.Vbc, 'V'); add(Q + 'region', t.region, '');
         }
@@ -672,7 +686,7 @@
             $('ic1').value = formatEng(r.Ic1);
             $('ic2').value = formatEng(r.Ic2);
             const sw = r.swing || {};
-            if (sw.VR > 0 && sw.VC > 0) {
+            if (sw.VR / sw.VC > 0 && isFinite(sw.VR / sw.VC)) {   // same sign for NPN and PNP
                 $('vr-ratio').value = sig6(sw.VR / sw.VC);
                 $('vc-ratio').value = '1';
             }
@@ -684,6 +698,50 @@
         compute();
     }
     $('xfer').addEventListener('click', transfer);
+
+    // ---------- polarity (NPN / PNP) ----------
+    // PNP: V_CC is negative, sample models swap, schematic layers swap to schematic_pnp*.svg.
+    let polarity = 'npn';
+    const NPN_DEFAULT_MODEL = $('q1-model').defaultValue;
+    function sampleModel(pol) {
+        const s = typeof FFEngine !== 'undefined' && FFEngine.SAMPLE_MODELS;
+        if (s && s[pol]) return s[pol];
+        return pol === 'npn' ? NPN_DEFAULT_MODEL : null;
+    }
+    function readVcc() {
+        const v = num('vcc', { finite: true });
+        const ok = isFinite(v) && (polarity === 'pnp' ? v < 0 : v > 0);
+        if (!ok && !$('vcc').classList.contains('bad')) { $('vcc').classList.add('bad'); invalid.push($('vcc')); }
+        return v;
+    }
+    function schemSrc(file) { return polarity === 'pnp' ? file.replace(/^schematic/, 'schematic_pnp') : file; }
+    function paintPolarity() {
+        $('polarity').setAttribute('aria-pressed', String(polarity === 'pnp'));
+        document.body.classList.toggle('pnp', polarity === 'pnp');
+        for (const im of document.querySelectorAll('.schematic img')) {
+            const base = im.dataset.file || (im.dataset.file = im.getAttribute('src'));
+            const src = schemSrc(base);
+            if (im.getAttribute('src') !== src) { im.hidden = false; im.setAttribute('src', src); }
+        }
+    }
+    // user switch: flip the V_CC sign and swap untouched sample models
+    function setPolarity(pol) {
+        if (pol === polarity) return;
+        const from = polarity;
+        polarity = pol;
+        const vcc = $('vcc'), v = vcc.value.trim();
+        const n = parseEngineering(v);
+        if (isFinite(n) && n !== 0 && (pol === 'pnp') !== (n < 0)) vcc.value = v.charAt(0) === '-' ? v.slice(1) : '-' + v.replace(/^\+/, '');
+        const a = sampleModel(from), b = sampleModel(pol);
+        for (const q of ['q1', 'q2']) {
+            const ta = $(q + '-model');
+            if (a && b && ta.value.trim() === a.trim()) ta.value = b;
+        }
+        paintPolarity();
+        clearTimeout(timer);
+        compute();
+    }
+    $('polarity').addEventListener('click', () => setPolarity(polarity === 'npn' ? 'pnp' : 'npn'));
 
     // ---------- gain unit (dB / ×): display only; CSV results keep both ----------
     let gainUnit = 'dB';
@@ -965,6 +1023,11 @@
 
     document.addEventListener('keydown', (e) => {
         if (document.getElementById('pdlg').open) return;
+        if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyP' || e.key === 'p' || e.key === 'P')) {
+            e.preventDefault();
+            setPolarity(polarity === 'npn' ? 'pnp' : 'npn');
+            return;
+        }
         if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyG' || e.key === 'g' || e.key === 'G')) {
             e.preventDefault();
             toggleGainUnit();

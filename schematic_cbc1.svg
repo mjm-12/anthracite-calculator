@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-10-27T22:15:34.010618</dc:date>
+    <dc:date>2026-10-28T13:56:07.597390</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -661,6 +661,19 @@ L 220.752 283.12
 " clip-path="url(#pcf2515b1b9)" style="fill: none; stroke: #000000; stroke-opacity: 0; stroke-linecap: round"/>
    </g>
    <g id="line2d_68">
+    <path d="M 278.412 291.04 
+L 256.812 291.04 
+" clip-path="url(#pcf2515b1b9)" style="fill: none; stroke: #000000; stroke-opacity: 0; stroke-linecap: round"/>
+   </g>
+   <g id="patch_13">
+    <path d="M 256.812 294.64 
+L 246.012 291.04 
+L 256.812 287.44 
+L 256.812 294.64 
+z
+" clip-path="url(#pcf2515b1b9)" style="fill: none"/>
+   </g>
+   <g id="line2d_69">
     <path d="M 220.752 283.12 
 L 220.752 258.88 
 L 220.752 234.64 
@@ -1140,7 +1153,23 @@ z
      <use xlink:href="#HelveticaNeueLTPro-Roman-46" transform="translate(69.404789 -14.917187) scale(0.7)"/>
     </g>
    </g>
-   <g id="patch_13">
+   <g id="text_22">
+    <!-- $I_F$ -->
+    <g style="opacity: 0" transform="translate(256.612 306.785) scale(0.16 -0.16)">
+     <defs>
+      <path id="HelveticaNeueLTPro-Roman-49" d="M 525 0 
+L 1133 0 
+L 1133 4570 
+L 525 4570 
+L 525 0 
+z
+" transform="scale(0.015625)"/>
+     </defs>
+     <use xlink:href="#HelveticaNeueLTPro-Roman-49" transform="translate(0 0.59375)"/>
+     <use xlink:href="#HelveticaNeueLTPro-Roman-46" transform="translate(26.804799 -14.917187) scale(0.7)"/>
+    </g>
+   </g>
+   <g id="patch_14">
     <path d="M 170.352 237.34 
 C 171.068048 237.34 171.754866 237.055511 172.261188 236.549188 
 C 172.767511 236.042866 173.052 235.356048 173.052 234.64 
@@ -1153,7 +1182,7 @@ C 168.949134 237.055511 169.635952 237.34 170.352 237.34
 z
 " clip-path="url(#pcf2515b1b9)" style="stroke: #000000; stroke-linejoin: miter"/>
    </g>
-   <g id="patch_14">
+   <g id="patch_15">
     <path d="M 191.952 237.34 
 C 192.668048 237.34 193.354866 237.055511 193.861188 236.549188 
 C 194.367511 236.042866 194.652 235.356048 194.652 234.64 
@@ -1167,7 +1196,7 @@ L 191.952 237.34
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="text_22">
+   <g id="text_23">
     <!-- $V_{B1}$ -->
     <g style="opacity: 0" transform="translate(179.792 252.365) scale(0.16 -0.16)">
      <use xlink:href="#HelveticaNeueLTPro-Roman-56" transform="translate(0 0.59375)"/>
@@ -1175,7 +1204,7 @@ z
      <use xlink:href="#HelveticaNeueLTPro-Roman-31" transform="translate(109.954785 -14.917187) scale(0.7)"/>
     </g>
    </g>
-   <g id="patch_15">
+   <g id="patch_16">
     <path d="M 220.752 237.34 
 C 221.468048 237.34 222.154866 237.055511 222.661188 236.549188 
 C 223.167511 236.042866 223.452 235.356048 223.452 234.64 
@@ -1189,7 +1218,7 @@ L 220.752 237.34
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="patch_16">
+   <g id="patch_17">
     <path d="M 262.212 196.06 
 C 262.928048 196.06 263.614866 195.775511 264.121188 195.269188 
 C 264.627511 194.762866 264.912 194.076048 264.912 193.36 
@@ -1203,7 +1232,7 @@ L 262.212 196.06
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="text_23">
+   <g id="text_24">
     <!-- $V_{C1}$ -->
     <g style="opacity: 0" transform="translate(266.712 206.48875) scale(0.16 -0.16)">
      <use xlink:href="#HelveticaNeueLTPro-Roman-56" transform="translate(0 0.59375)"/>
@@ -1211,7 +1240,7 @@ z
      <use xlink:href="#HelveticaNeueLTPro-Roman-31" transform="translate(112.544783 -14.917187) scale(0.7)"/>
     </g>
    </g>
-   <g id="patch_17">
+   <g id="patch_18">
     <path d="M 262.212 169.06 
 C 262.928048 169.06 263.614866 168.775511 264.121188 168.269188 
 C 264.627511 167.762866 264.912 167.076048 264.912 166.36 
@@ -1225,7 +1254,7 @@ L 262.212 169.06
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="patch_18">
+   <g id="patch_19">
     <path d="M 262.212 129.46 
 C 262.928048 129.46 263.614866 129.175511 264.121188 128.669188 
 C 264.627511 128.162866 264.912 127.476048 264.912 126.76 
@@ -1238,7 +1267,7 @@ C 260.809134 129.175511 261.495952 129.46 262.212 129.46
 z
 " clip-path="url(#pcf2515b1b9)" style="stroke: #000000; stroke-linejoin: miter"/>
    </g>
-   <g id="patch_19">
+   <g id="patch_20">
     <path d="M 298.212 196.06 
 C 298.928048 196.06 299.614866 195.775511 300.121188 195.269188 
 C 300.627511 194.762866 300.912 194.076048 300.912 193.36 
@@ -1252,7 +1281,7 @@ L 298.212 196.06
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="patch_20">
+   <g id="patch_21">
     <path d="M 334.212 196.06 
 C 334.928048 196.06 335.614866 195.775511 336.121188 195.269188 
 C 336.627511 194.762866 336.912 194.076048 336.912 193.36 
@@ -1266,7 +1295,7 @@ L 334.212 196.06
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="patch_21">
+   <g id="patch_22">
     <path d="M 390.072 143.98 
 C 390.788048 143.98 391.474866 143.695511 391.981188 143.189188 
 C 392.487511 142.682866 392.772 141.996048 392.772 141.28 
@@ -1280,7 +1309,7 @@ L 390.072 143.98
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="text_24">
+   <g id="text_25">
     <!-- $V_{C2}$ -->
     <g style="opacity: 0" transform="translate(394.572 156.20875) scale(0.16 -0.16)">
      <use xlink:href="#HelveticaNeueLTPro-Roman-56" transform="translate(0 0.59375)"/>
@@ -1288,7 +1317,7 @@ z
      <use xlink:href="#HelveticaNeueLTPro-Roman-32" transform="translate(112.544783 -14.917187) scale(0.7)"/>
     </g>
    </g>
-   <g id="patch_22">
+   <g id="patch_23">
     <path d="M 390.072 122.38 
 C 390.788048 122.38 391.474866 122.095511 391.981188 121.589188 
 C 392.487511 121.082866 392.772 120.396048 392.772 119.68 
@@ -1302,7 +1331,7 @@ L 390.072 122.38
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="patch_23">
+   <g id="patch_24">
     <path d="M 390.072 100.78 
 C 390.788048 100.78 391.474866 100.495511 391.981188 99.989188 
 C 392.487511 99.482866 392.772 98.796048 392.772 98.08 
@@ -1316,7 +1345,7 @@ L 390.072 100.78
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="patch_24">
+   <g id="patch_25">
     <path d="M 509.592 151.18 
 C 510.308048 151.18 510.994866 150.895511 511.501188 150.389188 
 C 512.007511 149.882866 512.292 149.196048 512.292 148.48 
@@ -1330,7 +1359,7 @@ L 509.592 151.18
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="text_25">
+   <g id="text_26">
     <!-- output -->
     <g style="opacity: 0" transform="translate(515.892 152.60875) scale(0.16 -0.16)">
      <defs>
@@ -1363,7 +1392,7 @@ z
      <use xlink:href="#HelveticaNeueLTPro-Roman-74" transform="translate(259.399948 0)"/>
     </g>
    </g>
-   <g id="patch_25">
+   <g id="patch_26">
     <path d="M 390.072 285.82 
 C 390.788048 285.82 391.474866 285.535511 391.981188 285.029188 
 C 392.487511 284.522866 392.772 283.836048 392.772 283.12 
@@ -1377,7 +1406,7 @@ L 390.072 285.82
 z
 " clip-path="url(#pcf2515b1b9)" style="fill: none"/>
    </g>
-   <g id="text_26">
+   <g id="text_27">
     <!-- $V_{E2}$ -->
     <g style="opacity: 0" transform="translate(360.312 277.2525) scale(0.16 -0.16)">
      <use xlink:href="#HelveticaNeueLTPro-Roman-56" transform="translate(0 0.59375)"/>
@@ -1385,7 +1414,7 @@ z
      <use xlink:href="#HelveticaNeueLTPro-Roman-32" transform="translate(104.774789 -14.917187) scale(0.7)"/>
     </g>
    </g>
-   <g id="patch_26">
+   <g id="patch_27">
     <path d="M 447.672 285.82 
 C 448.388048 285.82 449.074866 285.535511 449.581188 285.029188 
 C 450.087511 284.522866 450.372 283.836048 450.372 283.12 

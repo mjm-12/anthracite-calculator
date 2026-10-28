@@ -137,11 +137,14 @@
         return (ax !== 0 && (ax < 1e-3 || ax >= 1e4)) ? x.toExponential((d || 3) - 1) : x.toPrecision(d || 3);
     }
 
-    function validatePoints(points) {
+    // PNP points may be given as signed values (I_B, I_C, V_BE, V_CE all negative) or as
+    // magnitudes; they are converted to magnitudes, which is the mirrored NPN problem.
+    function validatePoints(points, pnp) {
         if (!Array.isArray(points) || points.length === 0) throw new Error('測定点がない');
-        return points.map((p, i) => {
+        return points.map((p0, i) => {
             const k = (i + 1) + ' 点目';
-            if (!p || typeof p !== 'object') throw new Error(k + ' が不正');
+            if (!p0 || typeof p0 !== 'object') throw new Error(k + ' が不正');
+            const p = pnp ? { Ib: Math.abs(p0.Ib), Ic: Math.abs(p0.Ic), Vbe: Math.abs(p0.Vbe), Vce: Math.abs(p0.Vce) } : p0;
             for (const name of ['Ib', 'Ic', 'Vbe', 'Vce']) {
                 const v = p[name];
                 if (typeof v !== 'number' || !isFinite(v) || v <= 0) {
@@ -202,7 +205,14 @@
         const wIc = opts.wIc === undefined ? 1 : opts.wIc, wIb = opts.wIb === undefined ? 1 : opts.wIb;
         const warnings = [];
 
-        const all = validatePoints(points);
+        // Polarity: opts.polarity, else the base model's type (parseSpiceModel), else NPN
+        const baseType = opts.base && opts.base.type ? String(opts.base.type).toUpperCase() : null;
+        let pol = opts.polarity ? String(opts.polarity).toUpperCase() : (baseType || 'NPN');
+        if (pol !== 'NPN' && pol !== 'PNP') throw new Error('polarity が不正: npn か pnp を指定 (' + opts.polarity + ')');
+        if (baseType && baseType !== pol) throw new Error('基準モデルが ' + pol + ' ではない (' + baseType + ')');
+        const pnp = pol === 'PNP';
+
+        const all = validatePoints(points, pnp);
         const pts = [];
         all.forEach((p, i) => {
             if (p.Vce < SAT_VCE) warnings.push((i + 1) + ' 点目は V_CE = ' + fmt(p.Vce) + ' V で飽和の可能性: 除外した');
@@ -363,7 +373,7 @@
 
         return {
             params: Q,
-            engineParams: toEngine(Q),
+            engineParams: Object.assign(toEngine(Q), { type: pol }),   // ready for FFEngine.evaluate (q.type checked against polarity)
             free: free.slice(),
             fixedNames: ALL_KEYS.filter(k => free.indexOf(k) < 0),
             points: outPts,
@@ -371,7 +381,8 @@
             iterations: it,
             converged: converged,
             warnings: warnings,
-            model: '.MODEL FIT NPN(' + parts.join(' ') + ')',
+            polarity: pol.toLowerCase(),
+            model: '.MODEL FIT ' + pol + '(' + parts.join(' ') + ')',
         };
     }
 

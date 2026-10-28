@@ -340,13 +340,18 @@
         return v.toExponential(2) + ' A';
     }
 
-    function validityWarnings(r) {
+    // r holds NPN-equivalent values. For PNP (pnp = true) the labels name the mirrored
+    // quantities (V_EC = -V_CE, V_CB = -V_BC, same numbers) and node voltages / branch
+    // currents are printed with their actual (negated) sign.
+    function validityWarnings(r, pnp) {
         const w = [];
         let acBad = false;
+        const sg = pnp ? -1 : 1;
+        const vce = pnp ? 'V_EC' : 'V_CE', vbc = pnp ? 'V_CB' : 'V_BC';
         for (const [name, q, ic] of [['Q1', r.q1, r.Ic1], ['Q2', r.q2, r.Ic2]]) {
             const k = name.slice(1);
             if (q.region === 'saturation') {
-                w.push(name + ' が飽和 (V_CE' + k + ' = ' + fmtV(q.Vce) + ', V_BC' + k + ' = ' + fmtV(q.Vbc) + ')');
+                w.push(name + ' が飽和 (' + vce + k + ' = ' + fmtV(q.Vce) + ', ' + vbc + k + ' = ' + fmtV(q.Vbc) + ')');
                 acBad = true;
             } else if (q.region === 'cutoff') {
                 w.push(name + ' がカットオフ (I_C' + k + ' = ' + fmtI(ic) + ')');
@@ -354,11 +359,12 @@
             }
         }
         if (acBad) w.push('能動領域外のトランジスタが含まれる: 音が出ない可能性がある');
-        if (r.nodes.VE2 < 0) w.push('V_E2 が負 (' + fmtV(r.nodes.VE2) + ')');
-        if (r.nodes.VC2 < 0) w.push('V_C2 が負 (' + fmtV(r.nodes.VC2) + ')');
-        if (r.branch.I1 < 0) w.push('R1 の電流が逆向き (I_1 = ' + fmtI(r.branch.I1) + ')');
-        if (r.branch.I2 < 0) w.push('R2 の電流が逆向き (I_2 = ' + fmtI(r.branch.I2) + ')');
-        if (r.branch.I3 < 0) w.push('R3 の電流が逆向き (I_3 = ' + fmtI(r.branch.I3) + ')');
+        const neg = pnp ? 'が正' : 'が負';
+        if (r.nodes.VE2 < 0) w.push('V_E2 ' + neg + ' (' + fmtV(sg * r.nodes.VE2) + ')');
+        if (r.nodes.VC2 < 0) w.push('V_C2 ' + neg + ' (' + fmtV(sg * r.nodes.VC2) + ')');
+        if (r.branch.I1 < 0) w.push('R1 の電流が逆向き (I_1 = ' + fmtI(sg * r.branch.I1) + ')');
+        if (r.branch.I2 < 0) w.push('R2 の電流が逆向き (I_2 = ' + fmtI(sg * r.branch.I2) + ')');
+        if (r.branch.I3 < 0) w.push('R3 の電流が逆向き (I_3 = ' + fmtI(sg * r.branch.I3) + ')');
         return w;
     }
 
@@ -1148,8 +1154,7 @@
         };
     }
 
-    function evaluate(inputs) {
-        if (!inputs || typeof inputs !== 'object') throw new Error('入力がない');
+    function evaluateNpn(inputs, pnp) {
         // Source resistance (AC only; C_in blocks DC). Default 1 kΩ, 0 allowed.
         const Rin = reqNonNeg(optDefault(inputs.Rin, 1000), 'R_in');
         let sol;
@@ -1171,11 +1176,80 @@
             valid: r.q1.region === 'active' && r.q2.region === 'active',
         };
         r.solver = sol.solver;
-        r.warnings = sol.warnings.concat(validityWarnings(r));
+        r.warnings = sol.warnings.concat(validityWarnings(r, pnp));
         return r;
     }
 
+    // ---------------------------------------------------------------
+    // Polarity. inputs.polarity = 'npn' (default) | 'pnp'.
+    // PNP is the exact mirror of the NPN circuit: supply -|Vcc|, every node voltage,
+    // branch current and junction voltage changes sign. The PNP problem is solved as
+    // the mirrored NPN problem (same Gummel-Poon core, V_EB / V_CB in place of
+    // V_BE / V_BC) and the result is mirrored back.
+    // Vcc is signed: positive for NPN, negative for PNP (a contradicting sign is an
+    // error). Ic1/Ic2 (and forward-mode targets), q.Ib, hfe, gm, rie, ro, caps and all
+    // resistances stay positive magnitudes. Node voltages, branch currents, swing and
+    // q.Vbe / q.Vbc / q.Vce are the actual signed values (negative V_BE for PNP).
+    // Small-signal quantities (ac, acSweep) are unchanged by the mirror.
+    // A model with type 'NPN'/'PNP' (from parseSpiceModel) must match the polarity.
+    // ---------------------------------------------------------------
+    function polarityOf(inputs) {
+        const pol = inputs.polarity === undefined || inputs.polarity === null ? 'npn' : String(inputs.polarity).toLowerCase();
+        if (pol !== 'npn' && pol !== 'pnp') throw new Error('polarity が不正: npn か pnp を指定 (' + inputs.polarity + ')');
+        for (const [name, q] of [['Q1', inputs.q1], ['Q2', inputs.q2]]) {
+            const t = q && q.type ? String(q.type).toUpperCase() : null;
+            if (t && t !== pol.toUpperCase()) throw new Error(name + ' のモデルが ' + pol.toUpperCase() + ' ではない (' + t + ')');
+        }
+        return pol;
+    }
+
+    function mirrorInputs(inputs) {
+        const v = inputs.Vcc;
+        if (typeof v === 'number' && isFinite(v) && v > 0) {
+            throw new Error('PNP では V_CC を負の値で指定する (' + v + ' V)');
+        }
+        return Object.assign({}, inputs, { Vcc: (typeof v === 'number') ? -v : v, polarity: 'npn' });
+    }
+
+    function mirrorResult(r) {
+        const neg = (o) => { const x = {}; for (const k of Object.keys(o)) x[k] = -o[k]; return x; };
+        const q = (t) => Object.assign({}, t, { Vbe: -t.Vbe, Vbc: -t.Vbc, Vce: -t.Vce });
+        return Object.assign({}, r, {
+            nodes: neg(r.nodes), branch: neg(r.branch), swing: neg(r.swing),
+            q1: q(r.q1), q2: q(r.q2),
+        });
+    }
+
+    function evaluate(inputs) {
+        if (!inputs || typeof inputs !== 'object') throw new Error('入力がない');
+        const pol = polarityOf(inputs);
+        if (pol === 'npn') {
+            const r = evaluateNpn(inputs, false);
+            r.polarity = 'npn'; r.Vcc = inputs.Vcc;
+            return r;
+        }
+        let r;
+        try {
+            r = mirrorResult(evaluateNpn(mirrorInputs(inputs), true));
+        } catch (e) {
+            // Messages from the mirrored solver quote NPN-equivalent (positive) voltages
+            if (e && /V_/.test(e.message) && !/PNP では/.test(e.message)) e.message += ' (PNP: 電圧は絶対値)';
+            throw e;
+        }
+        r.polarity = 'pnp'; r.Vcc = inputs.Vcc;
+        return r;
+    }
+
+    // Sample models. The NPN text is identical to the default in index.html.
+    // 2SA9999-W is a virtual PNP complement of 2SC8888-W: slightly larger IS, lower BF,
+    // VAF and fT (TF 520 p vs 445 p), larger junction capacitances.
+    const SAMPLE_MODELS = {
+        npn: '.MODEL 2SC8888-W NPN(IS=25.44f BF=380.43 NF=1.002 VAF=125.5 IKF=385m ISE=4.88f NE=1.35 BR=8.22 NR=1.01 VAR=18.5 IKR=180m ISC=32.5f NC=1.25 RB=12.8 IRB=50u RBM=2 RE=185m RC=880m CJE=15.32p VJE=0.75 MJE=0.34 CJC=5.12p VJC=0.55 MJC=0.32 FC=0.5 TF=445p XTF=8 VTF=12 ITF=300m TR=65n EG=1.11 XTI=3 XTB=1.5 Vceo=60 Icrating=150m mfg=virtual-transistor)',
+        pnp: '.MODEL 2SA9999-W PNP(IS=30.12f BF=318.6 NF=1.003 VAF=94.8 IKF=310m ISE=6.05f NE=1.38 BR=6.92 NR=1.01 VAR=15.2 IKR=150m ISC=28.3f NC=1.24 RB=15.6 IRB=40u RBM=2.5 RE=210m RC=950m CJE=18.1p VJE=0.75 MJE=0.35 CJC=7.88p VJC=0.55 MJC=0.33 FC=0.5 TF=520p XTF=6 VTF=10 ITF=250m TR=80n EG=1.11 XTI=3 XTB=1.5 Vceo=60 Icrating=150m mfg=virtual-transistor)',
+    };
+
     const FFEngine = {
+        SAMPLE_MODELS: SAMPLE_MODELS,
         evaluate: evaluate,
         transistorOp: transistorOp,
         gpDC: gpDC,

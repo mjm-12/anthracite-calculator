@@ -40,6 +40,8 @@ const SPICE_KEYS = { Is: 'IS', Bf: 'BF', Nf: 'NF', Ise: 'ISE', Ne: 'NE', Rb: 'RB
 
 // Returns params with defaults; params.found lists keys read from the text,
 // params.bad lists keys whose value could not be parsed.
+// params.type is 'NPN', 'PNP' or null (taken from ".MODEL name NPN(" / "PNP(";
+// enumerable so that Object.assign copies keep it).
 function parseSpiceModel(modelStr) {
     const params = Object.assign({}, SPICE_DEFAULTS);
     const found = [], bad = [];
@@ -58,6 +60,9 @@ function parseSpiceModel(modelStr) {
             found.push(key);
         }
     }
+
+    const tm = text.match(/\.model\s+\S+\s+(npn|pnp)\b/i) || text.match(/(?:^|\s)(npn|pnp)\s*\(/i);
+    params.type = tm ? tm[1].toUpperCase() : null;
 
     Object.defineProperty(params, 'found', { value: found, enumerable: false });
     Object.defineProperty(params, 'bad', { value: bad, enumerable: false });

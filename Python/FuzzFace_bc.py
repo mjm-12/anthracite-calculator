@@ -105,10 +105,24 @@ class Cap(elm.Element2Term):
 LAYERS = ['base', 'rbc1', 'rbc2', 'cbc1', 'cbc2']
 
 
-def draw(layer='full'):
+def draw(layer='full', pnp=False):
+    """pnp=True: PNP transistors (emitter still at the bottom), -V_CC supply,
+    C_in and C_E2 polarity flipped. Same geometry as the NPN drawing."""
     def col(name):
         return 'black' if layer in ('full', name) else '#00000000'   # fully transparent
     cb, r1, r2, k1, k2 = (col(n) for n in LAYERS)
+    vcc_lbl = '$-V_{CC}$' if pnp else '$V_{CC}$'
+
+    def bjt():
+        return elm.BjtPnp(circle=True).flip() if pnp else elm.BjtNpn(circle=True)
+
+    def cin():   # NPN: + toward V_B1 ; PNP: + toward the source side
+        c = elm.Capacitor2(polar=True)
+        return c if pnp else c.reverse()
+
+    def ce2():   # NPN: + at V_E2 ; PNP: + toward RV1
+        c = elm.Capacitor2(polar=True)
+        return c.reverse() if pnp else c
 
     with schemdraw.Drawing(show=False) as d:
         d.config(fontsize=font_size, font=font_name, lw=1, color=cb)
@@ -118,7 +132,7 @@ def draw(layer='full'):
         elm.GroundSignal(lead=False)
         elm.Line().right(0.3).at(Vs.start)
         Res().right(1.3).label('$R_{in}$', loc='top')
-        elm.Capacitor2(polar=True).reverse().right(1.5).label('$C_{in}$', loc='top').scale(1.25)
+        cin().right(1.5).label('$C_{in}$', loc='top').scale(1.25)
         elm.Line().right(0.35)
         nK1 = elm.Dot().color(k1)                           # C_BC1 leaves upward
         elm.Line().right(0.6)
@@ -126,7 +140,7 @@ def draw(layer='full'):
         elm.Line().right(0.8)
         nRF = elm.Dot()                                     # RF arrives from below
         elm.Line().right(0.4)
-        Q1 = elm.BjtNpn(circle=True).anchor('base').theta(0).label('$Q_1$', loc='right')
+        Q1 = bjt().anchor('base').theta(0).label('$Q_1$', loc='right')
         elm.Line().down(.2).at(Q1.emitter)
         G1 = elm.GroundSignal(lead=False)
 
@@ -140,7 +154,7 @@ def draw(layer='full'):
         elm.Line().up(0.25)
         Res().up(RL).label('$R_{1}$', loc='bottom')
         elm.Line().up(0.25)
-        Vcc(lead=False).label('$V_{CC}$', loc='top')
+        Vcc(lead=False).label(vcc_lbl, loc='top')
 
         # R_BC1 (inner) and C_BC1 (outer): V_B1 -> up -> right to V_C1
         elm.Line().up().at(nR1.center).toy(nR1t.center).color(r1)
@@ -154,7 +168,7 @@ def draw(layer='full'):
         elm.Line().right(1.0)
         nR2 = elm.Dot().color(r2)                           # R_BC2 leaves upward
         elm.Line().right(0.8)
-        Q2 = elm.BjtNpn(circle=True).anchor('base').theta(0).label('$Q_2$', loc='right')
+        Q2 = bjt().anchor('base').theta(0).label('$Q_2$', loc='right')
 
         elm.Line().up(0.75).at(Q2.collector)
         nR2t = elm.Dot().color(r2).label('$V_{C2}$', loc='right', ofst=(0.05, -0.3), color=cb)  # R_BC2 lands
@@ -165,7 +179,7 @@ def draw(layer='full'):
         elm.Line().up(0.2)
         Res().up(RL).label('$R_{2}$', loc='top')
         elm.Line().up(0.25)
-        Vcc(lead=False).label('$V_{CC}$', loc='top')
+        Vcc(lead=False).label(vcc_lbl, loc='top')
 
         # R_BC2 (inner) and C_BC2 (outer): V_C1 -> up -> right to V_C2
         elm.Line().up().at(nR2.center).toy(nR2t.center).color(r2)
@@ -186,7 +200,7 @@ def draw(layer='full'):
         Res().down(RL).label('$R_{3}$', loc='top')
         elm.GroundSignal(lead=False)
 
-        elm.Capacitor2(polar=True).at(nE2.center).right(1.6).label('$C_{E2}$', loc='top').scale(1.25)
+        ce2().at(nE2.center).right(1.6).label('$C_{E2}$', loc='top').scale(1.25)
         elm.Dot()
         RV1 = Pot().down(RL).label('$RV_{1}$', loc='top')
         elm.GroundSignal(lead=False)
@@ -195,7 +209,9 @@ def draw(layer='full'):
 
         # --- RF: V_E2 -> V_B1 -------------------------------------------------
         Res().at(nE2.center).left(2.4).label('$R_{F}$', loc='top')
-        elm.Line().left().tox(nRF.center)
+        LF = elm.Line().left().tox(nRF.center)
+        # I_F reference direction: V_E2 -> V_B1 (engine: I_F = (V_E2 - V_B1)/R_F)
+        elm.CurrentLabel(top=True, length=0.9, ofst=0.22).at(LF).label('$I_F$', ofst=-0.08)
         elm.Line().up().toy(nRF.center)
 
     return d
@@ -207,17 +223,42 @@ image_dir = os.path.join(HERE, 'Images')
 repo_root = os.path.dirname(HERE)
 os.makedirs(image_dir, exist_ok=True)
 
-# full drawing (reference / documentation)
-d = draw('full')
-d.save(os.path.join(image_dir, 'FuzzFace_bc.svg'), transparent=True)
-d.save(os.path.join(image_dir, 'FuzzFace_bc.png'), dpi=300, transparent=False)
+import re
+import tempfile
 
-# layers: schematic.svg (base) + schematic_<layer>.svg
-for layer in LAYERS:
-    suffix = '' if layer == 'base' else f'_{layer}'
-    d = draw(layer)
-    svg_path = os.path.join(image_dir, f'FuzzFace_bc_layer_{layer}.svg')
-    d.save(svg_path, transparent=True)
-    d.save(os.path.join(image_dir, f'FuzzFace_bc_layer_{layer}.png'), dpi=300, transparent=True)
-    shutil.copyfile(svg_path, os.path.join(repo_root, f'schematic{suffix}.svg'))
-    print('saved', svg_path)
+_DATE = re.compile(rb'<dc:date>.*?</dc:date>', re.S)
+
+
+def save_if_changed(d, path, **kw):
+    """Save, but leave an existing file untouched when only the SVG date differs."""
+    ext = os.path.splitext(path)[1]
+    fd, tmp = tempfile.mkstemp(suffix=ext)
+    os.close(fd)
+    d.save(tmp, **kw)
+    new = open(tmp, 'rb').read()
+    if os.path.exists(path) and _DATE.sub(b'', open(path, 'rb').read()) == _DATE.sub(b'', new):
+        os.remove(tmp)
+        return False
+    shutil.move(tmp, path)
+    return True
+
+
+for pnp in (False, True):
+    tag = '_pnp' if pnp else ''
+    # full drawing (reference / documentation)
+    d = draw('full', pnp)
+    save_if_changed(d, os.path.join(image_dir, f'FuzzFace_bc{tag}.svg'), transparent=True)
+    save_if_changed(d, os.path.join(image_dir, f'FuzzFace_bc{tag}.png'), dpi=300, transparent=False)
+
+    # layers: schematic[_pnp].svg (base) + schematic[_pnp]_<layer>.svg
+    for layer in LAYERS:
+        suffix = tag if layer == 'base' else f'{tag}_{layer}'
+        d = draw(layer, pnp)
+        svg_path = os.path.join(image_dir, f'FuzzFace_bc{tag}_layer_{layer}.svg')
+        changed = save_if_changed(d, svg_path, transparent=True)
+        save_if_changed(d, os.path.join(image_dir, f'FuzzFace_bc{tag}_layer_{layer}.png'),
+                        dpi=300, transparent=True)
+        root_svg = os.path.join(repo_root, f'schematic{suffix}.svg')
+        if changed or not os.path.exists(root_svg):
+            shutil.copyfile(svg_path, root_svg)
+        print('updated' if changed else 'unchanged', svg_path)

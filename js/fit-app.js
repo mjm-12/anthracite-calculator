@@ -110,7 +110,8 @@
             const v = raw.map((s, j) => {
                 if (s === '') { incomplete = true; return undefined; }   // row not filled in yet: skipped
                 const n = parseEngineering(s);
-                if (!(n > 0 && isFinite(n))) { ins[j].classList.add('bad'); bad.push('#' + (i + 1)); }
+                // PNP: signed (negative) values or magnitudes are both accepted (fit.js mirrors them)
+                if (!(isFinite(n) && (pagePolarity() === 'pnp' ? n !== 0 : n > 0))) { ins[j].classList.add('bad'); bad.push('#' + (i + 1)); }
                 return n;
             });
             if (incomplete) { skipped++; return; }
@@ -123,7 +124,24 @@
     function baseParams(text) {
         const p = parseSpiceModel(text), o = {};
         for (const k of p.found) o[SPICE_KEYS[k]] = p[k];
+        if (p.type) o.type = p.type;   // NPN / PNP from ".MODEL name PNP(" decides the fit polarity
         return o;
+    }
+
+    // ---------- polarity ----------
+    // From the calculator (fit.html?q=N): its polarity. Otherwise the base model's type.
+    let calcPolarity = null;
+    function pagePolarity() {
+        if (calcPolarity) return calcPolarity;
+        const t = parseSpiceModel($('fit-base').value).type;
+        return t && String(t).toLowerCase() === 'pnp' ? 'pnp' : 'npn';
+    }
+    function paintHeads() {
+        const pnp = pagePolarity() === 'pnp';
+        const h = ['I<sub>B</sub>', 'V<sub>CE</sub>', 'I<sub>C</sub>', 'V<sub>BE</sub>'], u = ['A', 'V', 'A', 'V'];
+        const ths = document.querySelectorAll('#meas thead th');
+        h.forEach((x, i) => { ths[i + 1].innerHTML = (pnp ? '|' + x + '|' : x) + ' [' + u[i] + ']'; });
+        ths[0].title = pnp ? 'PNP: magnitudes or signed (negative) values' : '';
     }
 
     // ---------- fit ----------
@@ -138,6 +156,7 @@
     }
 
     function run() {
+        paintHeads();
         for (const el of document.querySelectorAll('.fit .dirty')) el.classList.remove('dirty');
         save();
         const { pts, bad, skipped } = readPoints();
@@ -151,6 +170,7 @@
         if (!pts.length) return fail('I_B, V_CE, I_C, V_BE を入力した行が無い', true);
         if (typeof FFFit === 'undefined') return fail('fit.js が読み込まれていない');
         const opt = { Vt: Vt, base: baseParams(baseEl.value) };
+        if (calcPolarity) opt.polarity = calcPolarity;
         const addFree = OVR.filter((k) => ovr[k] === 'free'), noFree = OVR.filter((k) => ovr[k] === 'fix');
         let r;
         try {
@@ -354,6 +374,7 @@
         // base model defaults to the target transistor's current model text
         try {
             const d = JSON.parse(localStorage.getItem(CALC_KEY) || 'null');
+            if (d && (d.polarity === 'npn' || d.polarity === 'pnp')) calcPolarity = d.polarity;
             if (d && typeof d[target + '-model'] === 'string' && d[target + '-model'].trim()) $('fit-base').value = d[target + '-model'];
         } catch (e) { /* ignore */ }
     }
