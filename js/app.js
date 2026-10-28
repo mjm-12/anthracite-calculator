@@ -498,7 +498,9 @@
     // ---------- persistence (per-browser convenience) ----------
     // Full input state as typed (strings / booleans)
     function getState() {
-        const d = { mode: getMode(), rfmode: veMode() ? 've' : 'rf', 'gain-unit': gainUnit, polarity: polarity };
+        const src = FFBode.getSrc();
+        const d = { mode: getMode(), rfmode: veMode() ? 've' : 'rf', 'gain-unit': gainUnit, polarity: polarity,
+            source: src.source, vol: String(src.vol), tone: String(src.tone) };
         for (const id of FIELD_IDS) d[id] = $(id).value;
         if (rfKept !== null) d.rf = rfKept;
         for (const id of BC_IDS) {
@@ -524,6 +526,12 @@
         }
         if (d.polarity === 'npn' || d.polarity === 'pnp') { polarity = d.polarity; paintPolarity(); }   // values are stored signed
         if (d.rfmode === 've' || d.rfmode === 'rf') setVeMode(d.rfmode === 've');
+        {
+            const sp = {};
+            if (typeof d.source === 'string' && (d.source === 'r' || (FFEngine.PICKUP_PRESETS && FFEngine.PICKUP_PRESETS[d.source]))) sp.source = d.source;
+            for (const k of ['vol', 'tone']) { const v = Number(d[k]); if (d[k] !== undefined && d[k] !== '' && isFinite(v) && v >= 0 && v <= 10) sp[k] = v; }
+            if (Object.keys(sp).length) FFBode.setSrc(sp);
+        }
         if (d['gain-unit'] === 'dB' || d['gain-unit'] === 'x') { gainUnit = d['gain-unit']; paintGainUnit(); }
         if (d.mode === 'reverse' || d.mode === 'forward') {
             form.querySelector('input[name="mode"][value="' + d.mode + '"]').checked = true;
@@ -548,7 +556,7 @@
     // ---------- CSV export / import ----------
     // [CSV key, state key, unit]
     const CSV_PARAMS = [
-        ['mode', 'mode', ''], ['polarity', 'polarity', ''], ['rfmode', 'rfmode', ''], ['gain_unit', 'gain-unit', ''],
+        ['mode', 'mode', ''], ['polarity', 'polarity', ''], ['source', 'source', ''], ['vol', 'vol', ''], ['tone', 'tone', ''], ['rfmode', 'rfmode', ''], ['gain_unit', 'gain-unit', ''],
         ['vcc', 'vcc', 'V'], ['rf', 'rf', 'Ω'], ['rv1', 'rv1', 'Ω'], ['rv2', 'rv2', 'Ω'], ['rin', 'rin', 'Ω'],
         ['cin', 'cin', 'F'], ['ce2', 'ce2', 'F'], ['cout', 'cout', 'F'],
         ['ic1', 'ic1', 'A'], ['ic2', 'ic2', 'A'],
@@ -764,9 +772,10 @@
     // ---------- Bode: modeless dialog + pop-out windows ----------
     const bdlg = $('bdlg'), bplot = $('bplot');
     const BODE_GEOM = 'ffop.bode.dialog';
-    const bodeEl = { svg: bplot, sum: $('bsum'), msg: $('bmsg') };
+    const bodeEl = { svg: bplot, sum: $('bsum'), msg: $('bmsg'), stab: $('bstab') };
     const chan = typeof BroadcastChannel === 'function' ? new BroadcastChannel(FFBode.CHANNEL) : null;
     const bodeSweep = FFBode.sweepToggle($('bsweep'), bdlg, () => redrawBode());
+    FFBode.bindSource(bdlg, () => { redrawBode(); save(); });
 
     // default box: over the results column, ~60vh tall
     function defaultGeom() {

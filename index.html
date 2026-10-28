@@ -142,10 +142,20 @@
                     <label for="fstart">f</label><span class="pair"><input id="fstart" value="10" data-step="e24" data-lbl="f_start"><i>–</i><input id="fstop" value="1M" data-step="e24" data-lbl="f_stop" aria-label="f stop"></span><span class="u">Hz</span>
                 </div>
                 <button type="button" class="open" id="bsweep" aria-pressed="false" title="RV1 sweep 1 Ω … 10 kΩ (Alt+R)">RV<sub>1</sub> sweep</button>
+                <span class="bsrc">
+                    <select id="bsrc" aria-label="signal source" title="signal source for the Bode / stability views">
+                        <option value="r">R_in</option>
+                        <option value="texasSpecialNeck">Texas Special Neck</option>
+                        <option value="gibson57ClassicNeck">57 Classic Neck</option>
+                    </select>
+                    <span class="bknobs" id="bknobs" hidden><label>Vol <input id="bvol" value="10" data-step="1" data-min="0" data-max="10" aria-label="volume knob 0-10"></label><label>Tone <input id="btone" value="10" data-step="1" data-min="0" data-max="10" aria-label="tone knob 0-10"></label></span>
+                </span>
+                <button type="button" class="seg2" id="bview" aria-pressed="false" title="Bode / stability (Alt+T)"><span>bode</span><span>stability</span></button>
                 <div class="bsum" id="bsum"></div>
             </div>
             <div class="bmsg" id="bmsg"></div>
             <svg id="bplot" role="img" aria-label="|A_vs| and phase vs frequency"></svg>
+            <div class="bstab" id="bstab" hidden></div>
         </form>
     </dialog>
 

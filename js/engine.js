@@ -933,99 +933,246 @@
         return [xr, xi];
     }
 
-    // Admittance of R in series with C at angular frequency w, as [re, im];
-    // null means a short (R = 0 and C = infinity).
-    function seriesRC(R, C, w) {
-        if (R === Infinity || !(C > 0)) return [0, 0];
-        if (C === Infinity) return R > 0 ? [1 / R, 0] : null;
-        const zr = R, zi = -1 / (w * C), d = zr * zr + zi * zi;
-        return [zr / d, -zi / d];
+    // ---------------------------------------------------------------
+    // Small-signal network (complex MNA at complex frequency s)
+    // Elements: admittances (R, C, L, series R-C), voltage-controlled current
+    // sources (the transistors' active part, flagged 'active'), independent
+    // voltage sources (extra MNA rows) and current injections.
+    // ---------------------------------------------------------------
+    const cx = {
+        add: (a, b) => [a[0] + b[0], a[1] + b[1]],
+        sub: (a, b) => [a[0] - b[0], a[1] - b[1]],
+        mul: (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]],
+        div: (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; },
+        abs: (a) => Math.hypot(a[0], a[1]),
+        sqrt: (a) => { const r = Math.hypot(a[0], a[1]), t = Math.atan2(a[1], a[0]) / 2, m = Math.sqrt(r); return [m * Math.cos(t), m * Math.sin(t)]; },
+    };
+
+    function newNet() {
+        const net = { n: 0, el: [], nv: 0, names: {} };
+        net.node = (name) => { if (net.names[name] === undefined) net.names[name] = net.n++; return net.names[name]; };
+        net.R = (a, b, R) => { if (R === Infinity) return; if (!(R > 0)) throw new Error('internal: R <= 0'); net.el.push({ t: 'Y', a, b, f: () => [1 / R, 0] }); };
+        net.G = (a, b, g) => { if (g !== 0) net.el.push({ t: 'Y', a, b, f: () => [g, 0] }); };
+        net.C = (a, b, C) => { if (C > 0 && isFinite(C)) net.el.push({ t: 'Y', a, b, f: (s) => [s[0] * C, s[1] * C] }); };
+        net.L = (a, b, L) => net.el.push({ t: 'Y', a, b, f: (s) => cx.div([1, 0], [s[0] * L, s[1] * L]) });
+        // R in series with C (no internal node): Y = 1 / (R + 1/(sC))
+        net.RC = (a, b, R, C) => {
+            if (R === Infinity || !(C > 0)) return;
+            if (C === Infinity) { net.R(a, b, R); return; }
+            net.el.push({ t: 'Y', a, b, f: (s) => cx.div([1, 0], cx.add([R, 0], cx.div([1, 0], [s[0] * C, s[1] * C]))) });
+        };
+        net.VCCS = (op, on, cp, cn, g, active) => net.el.push({ t: 'VCCS', op, on, cp, cn, g, active: !!active });
+        net.V = (a, b, val) => { const k = net.nv++; net.el.push({ t: 'V', a, b, k, val }); return k; };
+        net.I = (a, val) => net.el.push({ t: 'I', a, val });
+        return net;
     }
 
-    // One frequency point. p: { R1, R2, R3, Rf, RV1, RV2, Rbc1, Rbc2, Cbc1, Cbc2,
-    //   Rin, Cin, Ce2, Cout, ohmic, q1:{gpi,gmu,gm,gx,Rb,Re,Rc,Cbe,Cbc}, q2 }
-    function acPoint(p, f) {
-        const w = 2 * Math.PI * f;
-        const B1 = 0, C1 = 1, E2 = 2, C2 = 3, GND = -1;
-        let nN = 4;
-        const st = [];                 // [a, b, gr, gi]: admittance between a and b
-        const rows = [];               // [row, col, value]: controlled-source entries (real)
-        const y = (a, b, gr, gi) => { if (gr !== 0 || gi !== 0) st.push([a, b, gr, gi]); };
-        const res = (a, b, R) => { if (R !== Infinity && R > 0) y(a, b, 1 / R, 0); };
-        const cap = (a, b, C) => { if (C > 0 && isFinite(C)) y(a, b, 0, w * C); };
+    // Assemble the MNA matrix at s. opt.passive: drop active VCCS (Y0).
+    function mnaMatrix(net, s, opt) {
+        const N = net.n + net.nv;
+        const Ar = [], Ai = [], br = new Array(N).fill(0), bi = new Array(N).fill(0);
+        for (let i = 0; i < N; i++) { Ar.push(new Array(N).fill(0)); Ai.push(new Array(N).fill(0)); }
+        const add = (r, c, v) => { if (r >= 0 && c >= 0) { Ar[r][c] += v[0]; Ai[r][c] += v[1]; } };
+        for (const e of net.el) {
+            if (e.t === 'Y') {
+                const y = e.f(s), m = [-y[0], -y[1]];
+                add(e.a, e.a, y); add(e.b, e.b, y); add(e.a, e.b, m); add(e.b, e.a, m);
+            } else if (e.t === 'VCCS') {
+                if (opt && opt.passive && e.active) continue;
+                const g = [e.g, 0], m = [-e.g, 0];
+                add(e.op, e.cp, g); add(e.op, e.cn, m); add(e.on, e.cp, m); add(e.on, e.cn, g);
+            } else if (e.t === 'V') {
+                const r = net.n + e.k;
+                add(e.a, r, [1, 0]); add(e.b, r, [-1, 0]); add(r, e.a, [1, 0]); add(r, e.b, [-1, 0]);
+                br[r] += e.val;
+            } else if (e.t === 'I') {
+                if (e.a >= 0) br[e.a] += e.val;
+            }
+        }
+        return { Ar, Ai, br, bi, N };
+    }
+
+    function mnaSolve(net, s, opt) {
+        const m = mnaMatrix(net, s, opt);
+        const x = csolve(m.Ar, m.Ai, m.br, m.bi);
+        if (!x) throw new Error('小信号回路の行列が特異');
+        return (i) => [x[0][i], x[1][i]];
+    }
+
+    // det of the MNA matrix as { logAbs, arg } (LU with partial pivoting)
+    function mnaDet(net, s, opt) {
+        const m = mnaMatrix(net, s, opt), n = m.N, R = m.Ar, I = m.Ai;
+        let logAbs = 0, arg = 0;
+        for (let k = 0; k < n; k++) {
+            let piv = k, best = -1;
+            for (let i = k; i < n; i++) { const v = R[i][k] * R[i][k] + I[i][k] * I[i][k]; if (v > best) { best = v; piv = i; } }
+            if (!(best > 0) || !isFinite(best)) return { logAbs: -Infinity, arg: 0 };
+            if (piv !== k) { [R[k], R[piv]] = [R[piv], R[k]]; [I[k], I[piv]] = [I[piv], I[k]]; arg += Math.PI; }
+            const pr = R[k][k], pi = I[k][k], pd = pr * pr + pi * pi;
+            logAbs += 0.5 * Math.log(pd);
+            arg += Math.atan2(pi, pr);
+            for (let i = k + 1; i < n; i++) {
+                const ar = R[i][k], ai = I[i][k];
+                if (ar === 0 && ai === 0) continue;
+                const fr = (ar * pr + ai * pi) / pd, fi = (ai * pr - ar * pi) / pd;
+                for (let j = k; j < n; j++) {
+                    const xr = R[k][j], xi = I[k][j];
+                    R[i][j] -= fr * xr - fi * xi;
+                    I[i][j] -= fr * xi + fi * xr;
+                }
+            }
+        }
+        return { logAbs, arg };
+    }
+
+    // ---------------------------------------------------------------
+    // Signal source
+    // { type: 'r' } (default): v_s -- R_in -- C_in -- B1.
+    // { type: 'pickup', DCR, Ls, Cp, Rp, vol:{R, pos, taper}, tone:{R, C, pos, taper},
+    //   bleed:{R, C}|null, cable }: guitar pickup and controls, wired as in the
+    //   measurement-data pickup simulation templates (st-type / lp_335-type):
+    //   emf -- Ls -- DCR -- P;  Cp, Rp: P-GND;  tone: P -- (Pt R_tone + 50m) -- C_tone -- GND;
+    //   volume: P -- (R_vol (1-Px) + 50m) -- W -- (Px R_vol + 50m) -- GND;
+    //   treble bleed R_b || C_b between P and W;  cable: W -- 0.5 ohm -- K, C_cable K-GND;
+    //   K -- C_in -- B1.  Knob pos 0..10; taper 'A' (log): (32^(pos/10) - 1)/31, 'B': pos/10.
+    // ---------------------------------------------------------------
+    function potFrac(pos, taper) {
+        const k = pos / 10;
+        if (taper === 'B' || taper === 'b' || taper === 'lin') return k;
+        return (Math.pow(32, k) - 1) / 31;
+    }
+
+    function normalizeSource(src, Rin) {
+        if (!src || src.type === undefined || src.type === 'r') return { type: 'r', Rin: Rin };
+        if (src.type !== 'pickup') throw new Error('source.type が不正: r か pickup を指定 (' + src.type + ')');
+        const pot = (o, label, needC) => {
+            if (!o) return null;
+            const pos = optDefault(o.pos, 10);
+            if (!isNum(pos) || pos < 0 || pos > 10) throw new Error(label + ' の位置が不正: 0〜10 (' + pos + ')');
+            const taper = optDefault(o.taper, 'A');
+            if (['A', 'B', 'a', 'b', 'log', 'lin'].indexOf(taper) < 0) throw new Error(label + ' のカーブが不正: A か B (' + taper + ')');
+            return { R: reqPos(o.R, label + ' の抵抗'), pos: pos, taper: taper, C: needC ? reqPos(o.C, label + ' の容量') : undefined };
+        };
+        return {
+            type: 'pickup', name: src.name,
+            DCR: reqPos(src.DCR, 'PU の DCR'), Ls: reqPos(src.Ls, 'PU の Ls'), Cp: reqNonNeg(optDefault(src.Cp, 0), 'PU の Cp'),
+            Rp: reqPosOrInf(optDefault(src.Rp, Infinity), 'PU の Rp'),
+            vol: pot(src.vol, 'ボリューム', false),
+            tone: pot(src.tone, 'トーン', true),
+            bleed: src.bleed ? { R: reqPosOrInf(optDefault(src.bleed.R, Infinity), 'トレブルブリードの抵抗'), C: reqNonNeg(optDefault(src.bleed.C, 0), 'トレブルブリードの容量') } : null,
+            cable: reqNonNeg(optDefault(src.cable, 650e-12), 'ケーブル容量'),
+            cableR: reqNonNeg(optDefault(src.cableR, 0.5), 'ケーブル抵抗'),
+        };
+    }
+
+    const PICKUP_PRESETS = {
+        texasSpecialNeck: {
+            type: 'pickup', name: 'Fender Custom Shop Texas Special Neck',
+            DCR: 5.689e3, Ls: 2.196, Cp: 127.35e-12, Rp: 184.34e3,
+            vol: { R: 250e3, pos: 10, taper: 'A' }, tone: { R: 250e3, C: 0.022e-6, pos: 10, taper: 'A' },
+            bleed: null, cable: 650e-12,
+        },
+        gibson57ClassicNeck: {
+            type: 'pickup', name: 'Gibson 57 Classic Neck',
+            DCR: 7.218e3, Ls: 4.053, Cp: 187.23e-12, Rp: 299.9e3,
+            vol: { R: 500e3, pos: 10, taper: 'A' }, tone: { R: 500e3, C: 0.022e-6, pos: 10, taper: 'A' },
+            bleed: { R: 680e3, C: 390e-12 }, cable: 650e-12,
+        },
+    };
+
+    // Build the small-signal network.
+    // cfg.src: source value (1 = drive, 0 = nulled); cfg.zin: omit the source network and
+    // inject 1 A at the node in front of C_in; cfg.tian: 'v' | 'i' (break R_F at E2).
+    // p: { R1, R2, R3, Rf, RV1, RV2, Rbc1, Rbc2, Cbc1, Cbc2, Cin, Ce2, Cout, ohmic, source, q1, q2 }
+    function buildNet(p, cfg) {
+        const net = newNet(), GND = -1;
+        const B1 = net.node('B1'), C1 = net.node('C1'), E2 = net.node('E2'), C2 = net.node('C2');
+        net.R(C1, GND, p.R1);
+        net.R(C2, GND, p.R2);
+        net.R(E2, GND, p.R3);
+        if (p.RV1 === 0 && p.Ce2 === Infinity) throw new Error('RV1 = 0 かつ C_E2 = ∞ は扱えない');
+        net.RC(E2, GND, p.RV1, p.Ce2);
+        let X = E2;
+        if (cfg.tian) {
+            X = net.node('X');
+            net.tianV = net.V(X, E2, cfg.tian === 'v' ? 1 : 0);   // v_X - v_E2 = 1 (voltage test) or 0
+            if (cfg.tian === 'i') net.I(E2, 1);
+        }
+        net.R(X, B1, p.Rf);
+        net.R(B1, C1, p.Rbc1);
+        net.R(C1, C2, p.Rbc2);
+        net.C(B1, C1, p.Cbc1);
+        net.C(C1, C2, p.Cbc2);
+        net.C(C2, B1, p.Cstray || 0);
+        let k = 0;
         const series = (ext, R) => {
             if (!p.ohmic || !(R > 0)) return ext;
-            const n = nN++;
-            res(ext, n, R);
+            const n = net.node('int' + (k++));
+            net.R(ext, n, R);
             return n;
         };
-        function transistor(Bx, Cx, Ex, q) {
+        // Transistor: passive g_pi (b-e), g_mu (b-c), g_o = -(g_x + g_mu) (c-e), Cbe, Cbc,
+        // plus the active VCCS g_me = g_m + g_x + g_mu (c -> e, controlled by v_be).
+        const transistor = (Bx, Cx, Ex, q) => {
             const b = series(Bx, q.Rb), c = series(Cx, q.Rc), e = series(Ex, q.Re);
-            const ib = [[b, q.gpi + q.gmu], [e, -q.gpi], [c, -q.gmu]];
-            const ic = [[b, q.gm + q.gx], [e, -q.gm], [c, -q.gx]];
-            for (const [col, v] of ib) { rows.push([b, col, v]); rows.push([e, col, -v]); }
-            for (const [col, v] of ic) { rows.push([c, col, v]); rows.push([e, col, -v]); }
-            cap(b, e, q.Cbe);
-            cap(b, c, q.Cbc);
-        }
-
-        res(C1, GND, p.R1);
-        res(C2, GND, p.R2);
-        res(E2, GND, p.R3);
-        res(E2, B1, p.Rf);
-        res(B1, C1, p.Rbc1);
-        res(C1, C2, p.Rbc2);
-        cap(B1, C1, p.Cbc1);
-        cap(C1, C2, p.Cbc2);
-        const ye = seriesRC(p.RV1, p.Ce2, w);
-        if (ye === null) throw new Error('RV1 = 0 かつ C_E2 = ∞ は扱えない');
-        y(E2, GND, ye[0], ye[1]);
+            net.G(b, e, q.gpi);
+            net.G(b, c, q.gmu);
+            net.G(c, e, -(q.gx + q.gmu));
+            net.C(b, e, q.Cbe);
+            net.C(b, c, q.Cbc);
+            net.VCCS(c, e, b, e, q.gm + q.gx + q.gmu, true);
+        };
         transistor(B1, C1, GND, p.q1);
         transistor(C1, C2, E2, p.q2);
+        let OUT = C2;
+        if (p.Cout !== Infinity) { OUT = net.node('OUT'); net.C(C2, OUT, p.Cout); }
+        net.R(OUT, GND, p.RV2);
+        net.out = OUT;
 
-        // Output: C2 -- Cout -- OUT -- RV2 (if RV2 is open, OUT simply follows C2)
-        let OUT;
-        if (p.Cout === Infinity) { OUT = C2; res(C2, GND, p.RV2); }
-        else { OUT = nN++; cap(C2, OUT, p.Cout); res(OUT, GND, p.RV2); }
-
-        // Source: vs = 1 V behind Rin + Cin, or directly at B1
-        const ys = seriesRC(p.Rin, p.Cin, w);
-        const direct = (ys === null);
-        let S = -1;
-        if (!direct) { S = nN++; y(S, B1, ys[0], ys[1]); }
-
-        const N = nN, F = direct ? B1 : S;
-        const Gr = [], Gi = [];
-        for (let i = 0; i < N; i++) { Gr.push(new Array(N).fill(0)); Gi.push(new Array(N).fill(0)); }
-        const add = (r, c, vr, vi) => { if (r >= 0 && c >= 0) { Gr[r][c] += vr; Gi[r][c] += vi; } };
-        for (const [a, b, gr, gi] of st) { add(a, a, gr, gi); add(b, b, gr, gi); add(a, b, -gr, -gi); add(b, a, -gr, -gi); }
-        for (const [r, c, v] of rows) add(r, c, v, 0);
-
-        const idx = [];
-        for (let i = 0; i < N; i++) if (i !== F) idx.push(i);
-        const sol = csolve(idx.map(i => idx.map(j => Gr[i][j])), idx.map(i => idx.map(j => Gi[i][j])),
-            idx.map(i => -Gr[i][F]), idx.map(i => -Gi[i][F]));
-        if (!sol) throw new Error('小信号回路の行列が特異 (f = ' + f + ' Hz)');
-        const vr = new Array(N).fill(0), vi = new Array(N).fill(0);
-        vr[F] = 1;
-        idx.forEach((nd, k) => { vr[nd] = sol[0][k]; vi[nd] = sol[1][k]; });
-
-        let zr, zi;
-        if (direct) {
-            let ir = 0, ii = 0;
-            for (let j = 0; j < N; j++) { ir += Gr[B1][j] * vr[j] - Gi[B1][j] * vi[j]; ii += Gr[B1][j] * vi[j] + Gi[B1][j] * vr[j]; }
-            const d = ir * ir + ii * ii;
-            zr = ir / d; zi = -ii / d;
+        // Input coupling: K -- C_in -- B1 (K = B1 when C_in is a short)
+        let K = B1;
+        if (p.Cin !== Infinity) { K = net.node('K'); net.C(K, B1, p.Cin); }
+        net.k = K;
+        if (cfg.zin) { net.I(K, 1); return net; }
+        const sv = cfg.src;
+        const src = p.source || { type: 'r', Rin: p.Rin };
+        if (src.type === 'r') {
+            if (src.Rin > 0) { const S = net.node('S'); net.R(S, K, src.Rin); net.V(S, GND, sv); }
+            else net.V(K, GND, sv);
         } else {
-            // i_in = ys (1 - vB1); Z_B1 = vB1 / i_in; Zin = Z_B1 + 1/(jw Cin)
-            const dr = 1 - vr[B1], di = -vi[B1];
-            const ir = ys[0] * dr - ys[1] * di, ii = ys[0] * di + ys[1] * dr;
-            const d = ir * ir + ii * ii;
-            zr = (vr[B1] * ir + vi[B1] * ii) / d;
-            zi = (vi[B1] * ir - vr[B1] * ii) / d;
-            if (isFinite(p.Cin)) zi -= 1 / (w * p.Cin);
+            const V = net.node('emf'), Lm = net.node('Lm'), P = net.node('P'), W = net.node('W');
+            net.V(V, GND, sv);
+            net.L(V, Lm, src.Ls);
+            net.R(Lm, P, src.DCR);
+            net.C(P, GND, src.Cp);
+            net.R(P, GND, src.Rp);
+            if (src.tone) {
+                const T = net.node('T');
+                net.R(P, T, potFrac(src.tone.pos, src.tone.taper) * src.tone.R + 0.05);
+                net.C(T, GND, src.tone.C);
+            }
+            if (src.vol) {
+                const px = potFrac(src.vol.pos, src.vol.taper);
+                net.R(P, W, src.vol.R * (1 - px) + 0.05);
+                net.R(W, GND, px * src.vol.R + 0.05);
+                if (src.bleed) { net.R(P, W, src.bleed.R); net.C(P, W, src.bleed.C); }
+            } else {
+                net.R(P, W, 0.05);
+            }
+            if (src.cableR > 0) { net.R(W, K, src.cableR); net.C(K, GND, src.cable); }
+            else { net.R(W, K, 1e-6); net.C(K, GND, src.cable); }
         }
-        return { avr: vr[OUT], avi: vi[OUT], zr: zr, zi: zi };
+        return net;
+    }
+
+    // One frequency point: AvS = v_OUT / v_s, Zin looking into C_in.
+    function acPoint(p, f) {
+        const s = [0, 2 * Math.PI * f];
+        const net = buildNet(p, { src: 1 });
+        const a = mnaSolve(net, s)(net.out);
+        const nz = buildNet(p, { zin: true });
+        const z = mnaSolve(nz, s)(nz.k);
+        return { avr: a[0], avi: a[1], zr: z[0], zi: z[1] };
     }
 
     // -3 dB crossing between sweep points i and i+1, interpolated in log f.
@@ -1044,21 +1191,7 @@
         const n = Math.max(2, Math.round(optDefault(opts.n, 200)));
         reqPos(fStart, 'fStart'); reqPos(fStop, 'fStop');
         if (!(fStop > fStart)) throw new Error('fStart < fStop を満たさない');
-        const capIn = (v, d, label) => reqPosOrInf(optDefault(v, d), label);
-        const p = {
-            R1: r.R1, R2: r.R2, R3: r.R3, Rf: r.Rf,
-            RV1: reqPosOrInf(inputs.RV1, 'RV1'), RV2: reqPosOrInf(optDefault(inputs.RV2, Infinity), 'RV2'),
-            Rbc1: reqPosOrInf(optDefault(inputs.Rbc1, Infinity), 'R_BC1'),
-            Rbc2: reqPosOrInf(optDefault(inputs.Rbc2, Infinity), 'R_BC2'),
-            Cbc1: reqNonNeg(optDefault(inputs.Cbc1, 0), 'C_BC1'),
-            Cbc2: reqNonNeg(optDefault(inputs.Cbc2, 0), 'C_BC2'),
-            Rin: reqNonNeg(optDefault(inputs.Rin, 1000), 'R_in'),
-            Cin: capIn(inputs.Cin, 1e-6, 'C_in'),
-            Ce2: capIn(inputs.Ce2, 20e-6, 'C_E2'),
-            Cout: capIn(inputs.Cout, 10e-9, 'C_out'),
-            ohmic: optDefault(inputs.acOhmic, true) !== false,
-            q1: r.q1.ss, q2: r.q2.ss,
-        };
+        const p = acParams(r, inputs);
         const fr = [], mag = [], dB = [], ph = [], zm = [], zp = [];
         const deg = 180 / Math.PI;
         let prevPh = null;
@@ -1083,9 +1216,12 @@
         // physical and appears in LTspice too) do not move f_L or f_H.
         // Recomputed from p (not r.ac) so that AC-only overrides such as RV1 in the
         // acSweep(result, inputs) form get their own reference.
-        const refDB = analyzeAC(p).AvSdB;
         let k = 0;
         for (let i = 1; i < n; i++) if (dB[i] > dB[k]) k = i;
+        // With a pickup source there is no flat mid-band (the pickup resonance shapes the
+        // response), so the reference is the sweep maximum instead.
+        const refSource = p.source.type === 'r' ? 'midband' : 'max';
+        const refDB = refSource === 'midband' ? analyzeAC(p).AvSdB : dB[k];
         // Phase: shift the unwrapped curve so that it lies in (-180, 180] at the point
         // closest to the reference level inside the band (non-inverting amplifier: ~0 deg).
         let kRef = k, best = Infinity;
@@ -1115,9 +1251,209 @@
             AvS: { mag: mag, dB: dB, phaseDeg: ph },
             Zin: { mag: zm, phaseDeg: zp },
             f3dB: f3dB,
-            midbandDB: refDB,
+            midbandDB: refDB, refSource: refSource,
             maxDB: dB[k], fMax: fr[k],
             peak: peakDB > 1 ? { dB: peakDB, f: fr[k] } : null,
+            result: r,
+        };
+    }
+
+    // AC parameters shared by acSweep and stability
+    function acParams(r, inputs) {
+        const capIn = (v, d, label) => reqPosOrInf(optDefault(v, d), label);
+        const Rin = reqNonNeg(optDefault(inputs.Rin, 1000), 'R_in');
+        return {
+            R1: r.R1, R2: r.R2, R3: r.R3, Rf: r.Rf,
+            RV1: reqPosOrInf(inputs.RV1, 'RV1'),
+            RV2: reqPosOrInf(optDefault(inputs.RV2, Infinity), 'RV2'),
+            Rbc1: reqPosOrInf(optDefault(inputs.Rbc1, Infinity), 'R_BC1'),
+            Rbc2: reqPosOrInf(optDefault(inputs.Rbc2, Infinity), 'R_BC2'),
+            Cbc1: reqNonNeg(optDefault(inputs.Cbc1, 0), 'C_BC1'),
+            Cbc2: reqNonNeg(optDefault(inputs.Cbc2, 0), 'C_BC2'),
+            // Stray capacitance from the output C2 back to the input B1 (positive feedback; AC only)
+            Cstray: reqNonNeg(optDefault(inputs.Cstray, 0), 'C_stray'),
+            Rin: Rin,
+            Cin: capIn(inputs.Cin, 1e-6, 'C_in'),
+            Ce2: capIn(inputs.Ce2, 20e-6, 'C_E2'),
+            Cout: capIn(inputs.Cout, 10e-9, 'C_out'),
+            ohmic: optDefault(inputs.acOhmic, true) !== false,
+            source: normalizeSource(inputs.source, Rin),
+            q1: r.q1.ss, q2: r.q2.ss,
+        };
+    }
+
+    // ---------------------------------------------------------------
+    // Stability
+    // (a) Return difference of all loops: F(s) = det Y(s) / det Y0(s), where Y is the
+    //     MNA matrix with the signal source nulled and Y0 the same network with the
+    //     transistors' active VCCS (g_me = g_m + g_x + g_mu) removed. Y0 is passive
+    //     (R, L, C, g_pi, g_mu, g_o >= 0), so det Y0 has no RHP zeros and the common
+    //     factors from the reactive elements cancel. The number of clockwise
+    //     encirclements of the origin by F(jw), w from -inf to inf, equals the number
+    //     of RHP closed-loop poles. With F(-jw) = conj F(jw):
+    //       nRhp = -(arg F(j inf) - arg F(j 0+)) / pi   (unwrapped on w > 0).
+    // (b) Loop gain of the R_F loop by Tian's double injection at the E2 side of R_F:
+    //       Tv = -v_E2 / v_X (series voltage injection, v_X - v_E2 = v_z)
+    //       Ti = i_E2 / i_RF  (1 A shunt injection at the joined node)
+    //       T  = (Tv Ti - 1) / (Tv + Ti + 2)
+    //     with the negative-feedback sign convention (phase margin = 180 deg + arg T).
+    // ---------------------------------------------------------------
+    const wrapPi = (x) => { while (x > Math.PI) x -= 2 * Math.PI; while (x <= -Math.PI) x += 2 * Math.PI; return x; };
+
+    function Fratio(p, s) {
+        const net = buildNet(p, { src: 0 });
+        const a = mnaDet(net, s), b = mnaDet(net, s, { passive: true });
+        const la = a.logAbs - b.logAbs, ph = wrapPi(a.arg - b.arg);
+        return { la: la, ph: ph, v: [Math.exp(la) * Math.cos(ph), Math.exp(la) * Math.sin(ph)] };
+    }
+
+    function tianT(p, s) {
+        const nv = buildNet(p, { src: 0, tian: 'v' });
+        const xv = mnaSolve(nv, s);
+        const Tv = cx.div(xv(nv.names.E2), xv(nv.names.X)); Tv[0] = -Tv[0]; Tv[1] = -Tv[1];
+        const ni = buildNet(p, { src: 0, tian: 'i' });
+        const j = mnaSolve(ni, s)(ni.n + ni.tianV);        // current X -> E2 through the 0 V source
+        const Ti = cx.div([1 + j[0], j[1]], [-j[0], -j[1]]);
+        const num = cx.sub(cx.mul(Tv, Ti), [1, 0]);
+        const den = cx.add(cx.add(Tv, Ti), [2, 0]);
+        return { T: cx.div(num, den), Tv: Tv, Ti: Ti };
+    }
+
+    // Phase-unwrapped sweep of a complex function g(f) -> { la, ph } with adaptive
+    // refinement where the phase or log-magnitude changes fast. Returns arrays.
+    function trackPhase(g, fMin, fMax, n0, opt) {
+        const maxPts = (opt && opt.maxPts) || 20000, dphMax = (opt && opt.dph) || 0.3, dlaMax = (opt && opt.dla) || 1.0;
+        const grid = [];
+        for (let i = 0; i < n0; i++) grid.push(fMin * Math.pow(fMax / fMin, i / (n0 - 1)));
+        const out = [{ f: grid[0], val: g(grid[0]) }];
+        let count = 1, coarse = false;
+        function refine(fa, A, fb, B, depth) {
+            const ok = Math.abs(wrapPi(B.ph - A.ph)) <= dphMax && Math.abs(B.la - A.la) <= dlaMax;
+            if (ok || depth > 50 || fb / fa < 1 + 1e-10 || count > maxPts) {
+                if (!ok) coarse = true;
+                out.push({ f: fb, val: B }); count++;
+                return;
+            }
+            const fm = Math.sqrt(fa * fb), M = g(fm);
+            refine(fa, A, fm, M, depth + 1);
+            refine(fm, M, fb, B, depth + 1);
+        }
+        for (let i = 1; i < grid.length; i++) {
+            const A = out[out.length - 1].val, B = g(grid[i]);
+            refine(grid[i - 1], A, grid[i], B, 0);
+        }
+        const phU = [out[0].val.ph];
+        for (let i = 1; i < out.length; i++) phU.push(phU[i - 1] + wrapPi(out[i].val.ph - out[i - 1].val.ph));
+        return { pts: out, phU: phU, coarse: coarse };
+    }
+
+    // Muller's method for a zero of g(s), complex s.
+    function muller(g, x0, x1, x2, maxIt) {
+        let f0 = g(x0), f1 = g(x1), f2 = g(x2);
+        for (let it = 0; it < (maxIt || 100); it++) {
+            const h1 = cx.sub(x1, x0), h2 = cx.sub(x2, x1);
+            const d1 = cx.div(cx.sub(f1, f0), h1), d2 = cx.div(cx.sub(f2, f1), h2);
+            const a = cx.div(cx.sub(d2, d1), cx.add(h2, h1));
+            const b = cx.add(cx.mul(a, h2), d2);
+            const disc = cx.sqrt(cx.sub(cx.mul(b, b), cx.mul([4, 0], cx.mul(a, f2))));
+            const dp = cx.add(b, disc), dm = cx.sub(b, disc);
+            const den = cx.abs(dp) > cx.abs(dm) ? dp : dm;
+            if (!(cx.abs(den) > 0)) break;
+            const dx = cx.div(cx.mul([-2, 0], f2), den);
+            const x3 = cx.add(x2, dx);
+            if (!isFinite(x3[0]) || !isFinite(x3[1])) return null;
+            x0 = x1; f0 = f1; x1 = x2; f1 = f2; x2 = x3; f2 = g(x3);
+            if (cx.abs(dx) < 1e-11 * Math.max(cx.abs(x3), 1)) return x3;
+        }
+        return null;
+    }
+
+    // stability(inputs, opts) or stability(result, inputs, opts)
+    // opts: { fMin = 1e-3, fMax = 1e10, n = 300 (Nyquist grid, refined adaptively),
+    //         loopFStart = 1, loopFStop = 1e8, nLoop = 400 }
+    function stability(a, b, c) {
+        let r, inputs, opts;
+        if (a && a.ac && a.q1 && a.q1.ss) { r = a; inputs = b || {}; opts = c || {}; }
+        else { inputs = a; opts = b || {}; r = evaluate(inputs); }
+        const p = acParams(r, inputs);
+        const warnings = [];
+        const fMin = optDefault(opts.fMin, 1e-3), fMax = optDefault(opts.fMax, 1e10);
+        reqPos(fMin, 'fMin'); reqPos(fMax, 'fMax');
+        if (!(fMax > fMin)) throw new Error('fMin < fMax を満たさない');
+
+        // (a) Nyquist of F
+        const gF = (f) => Fratio(p, [0, 2 * Math.PI * f]);
+        const tr = trackPhase(gF, fMin, fMax, Math.max(20, Math.round(optDefault(opts.n, 300))));
+        const pts = tr.pts, phU = tr.phU, last = pts.length - 1;
+        const dPh = phU[last] - phU[0];
+        const nRhpRaw = -dPh / Math.PI;
+        const nRhp = Math.round(nRhpRaw);
+        if (Math.abs(nRhpRaw - nRhp) > 0.05) warnings.push('F の偏角が端点で実軸に戻っていない (' + nRhpRaw.toFixed(3) + '): 周波数範囲を広げる');
+        if (tr.coarse) warnings.push('F が原点のごく近くを通る: 虚軸上の極に近い');
+        let iMin = 0;
+        for (let i = 1; i <= last; i++) if (pts[i].val.la < pts[iMin].val.la) iMin = i;
+        const nyq = { f: [], re: [], im: [] };
+        for (const q of pts) { nyq.f.push(q.f); nyq.re.push(q.val.v[0]); nyq.im.push(q.val.v[1]); }
+
+        // Closed-loop poles near the jw axis: Muller from the deepest local minima of |F|
+        const minima = [];
+        for (let i = 1; i < last; i++) if (pts[i].val.la < pts[i - 1].val.la && pts[i].val.la <= pts[i + 1].val.la) minima.push(i);
+        minima.sort((x, y) => pts[x].val.la - pts[y].val.la);
+        const gs = (s) => Fratio(p, s).v;
+        const poles = [];
+        for (const i of minima.slice(0, 4)) {
+            const w = 2 * Math.PI * pts[i].f;
+            const root = muller(gs, [-0.02 * w, 0.98 * w], [0.01 * w, 1.02 * w], [0, w], 200);
+            if (!root || !(root[1] > 0)) continue;
+            if (cx.abs(gs(root)) > 1e-6) continue;
+            if (poles.some(q => cx.abs(cx.sub(q.s, root)) < 1e-6 * cx.abs(root))) continue;
+            const real = Math.abs(root[1]) < 1e-9 * cx.abs(root);
+            poles.push({ s: root, f: real ? 0 : root[1] / (2 * Math.PI), sigma: root[0], zeta: real ? Math.sign(-root[0]) : -root[0] / cx.abs(root) });
+        }
+        poles.sort((x, y) => y.sigma - x.sigma);
+        if (nRhp > 0 && !poles.some(q => q.sigma > 0)) warnings.push('右半面の極の位置は求まらなかった (実軸上の極の可能性)');
+
+        // (b) Tian loop gain of the R_F loop
+        const lf0 = optDefault(opts.loopFStart, 1), lf1 = optDefault(opts.loopFStop, 1e8), nl = Math.max(2, Math.round(optDefault(opts.nLoop, 400)));
+        const lf = [], mag = [], dB = [], phD = [];
+        let prev = null;
+        for (let i = 0; i < nl; i++) {
+            const f = lf0 * Math.pow(lf1 / lf0, i / (nl - 1));
+            const T = tianT(p, [0, 2 * Math.PI * f]).T;
+            let ph = Math.atan2(T[1], T[0]);
+            if (prev !== null) ph = prev + wrapPi(ph - prev);
+            prev = ph;
+            lf.push(f); mag.push(cx.abs(T)); dB.push(20 * Math.log10(cx.abs(T))); phD.push(ph * 180 / Math.PI);
+        }
+        const lerpF = (i, t) => Math.pow(10, Math.log10(lf[i]) + t * (Math.log10(lf[i + 1]) - Math.log10(lf[i])));
+        const pm = [], gm = [];
+        for (let i = 0; i < nl - 1; i++) {
+            if ((dB[i] >= 0) !== (dB[i + 1] >= 0)) {
+                const t = (0 - dB[i]) / (dB[i + 1] - dB[i]);
+                let deg = 180 + phD[i] + t * (phD[i + 1] - phD[i]);
+                while (deg > 180) deg -= 360; while (deg <= -180) deg += 360;
+                pm.push({ f: lerpF(i, t), deg: deg });
+            }
+            const ka = Math.floor((phD[i] + 180) / 360), kb = Math.floor((phD[i + 1] + 180) / 360);
+            if (ka !== kb) {
+                const target = -180 + 360 * Math.max(ka, kb);
+                const t = (target - phD[i]) / (phD[i + 1] - phD[i]);
+                gm.push({ f: lerpF(i, t), dB: -(dB[i] + t * (dB[i + 1] - dB[i])) });
+            }
+        }
+        return {
+            stable: nRhp === 0, nRhp: nRhp,
+            minAbsF: Math.exp(pts[iMin].val.la), fMinF: pts[iMin].f,
+            F0: pts[0].val.v, Finf: pts[last].val.v,
+            // poles: closed-loop poles found from the deepest minima of |F(jw)|, sorted by
+            // real part (least stable first); f = Im(s)/2pi [Hz], sigma = Re(s) [1/s],
+            // zeta = -Re(s)/|s|. Real poles have f = 0. Not an exhaustive list.
+            poles: poles.map(q => ({ f: q.f, sigma: q.sigma, zeta: q.zeta })),
+            dominant: poles.length ? { f: poles[0].f, sigma: poles[0].sigma, zeta: poles[0].zeta } : null,
+            zetaMin: poles.filter(q => q.f > 0).reduce((m, q) => Math.min(m, q.zeta), Infinity),
+            nyquist: nyq,
+            loop: { f: lf, T: { mag: mag, dB: dB, phaseDeg: phD }, pm: pm, gm: gm, crossover: pm.length > 0 },
+            warnings: warnings,
             result: r,
         };
     }
@@ -1257,6 +1593,10 @@
         solveReverse: solveReverse,
         analyzeAC: analyzeAC,
         acSweep: acSweep,
+        stability: stability,
+        PICKUP_PRESETS: PICKUP_PRESETS,
+        _newNet: newNet, _mnaDet: mnaDet, _mnaSolve: mnaSolve, _buildNet: buildNet, _acParams: acParams,
+        _trackPhase: trackPhase, _tianT: tianT, _Fratio: Fratio, _potFrac: potFrac,
         _acPoint: acPoint,
         kclResiduals: kclResiduals,
         // internal, exported for tests

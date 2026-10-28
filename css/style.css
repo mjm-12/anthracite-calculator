@@ -494,3 +494,30 @@ textarea.wrongtype { border-color: var(--accent); }
 .curov .sub { font-size: 9px; }
 #out .lblhelp { display: inline-block; }
 #out .lblhelp .help { right: -14px; top: -4px; }
+
+/* Bode dialog / pop-out: source selector, knobs, stability view */
+.bsrc { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; }
+.bsrc select { width: auto; height: 24px; text-align: left; text-align-last: left; padding: 0 22px 0 6px; }
+.bknobs { display: inline-flex; gap: 6px; font-size: 12px; color: var(--mute); }
+.bknobs[hidden] { display: none; }
+.bknobs input { width: 3em; height: 24px; text-align: right; }
+#bview { height: 24px; align-self: flex-start; font-size: 11px; }
+.bstab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+.bstab[hidden] { display: none; }
+.bstab.stale { opacity: 0.35; }
+.bstab .verdict { font-weight: 600; }
+.bstab .verdict.bad { color: var(--accent); }
+.bstab .verdict span { font-weight: 400; color: var(--mute); font-size: 11px; }
+.bstab-plots { flex: 1; min-height: 0; display: flex; gap: 10px; }
+.bstab-plots .tplot { flex: 3; min-width: 0; height: 100%; }
+.bstab-plots .nplot { flex: 2; min-width: 0; height: 100%; }
+.bstab svg .g { stroke: var(--rule); stroke-width: 1; }
+.bstab svg .ax { stroke: var(--mute); stroke-width: 1; fill: none; }
+.bstab svg .t { fill: var(--mute); font-size: 10px; font-family: inherit; }
+.bstab svg .l { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.bstab svg .lc { fill: none; stroke: color-mix(in srgb, var(--accent) 35%, white); stroke-width: 1; stroke-dasharray: 3 3; }
+.bstab svg .ref { stroke: var(--mute); stroke-width: 1; stroke-dasharray: 5 4; fill: none; }
+.bstab svg .mk { stroke: var(--fg); stroke-width: 1; stroke-dasharray: 4 3; }
+.bstab svg .mt { fill: var(--fg); font-size: 10px; font-family: inherit; }
+.bstab svg .org { stroke: var(--fg); stroke-width: 1.5; }
+@media (max-width: 700px) { .bstab-plots { flex-direction: column; } }

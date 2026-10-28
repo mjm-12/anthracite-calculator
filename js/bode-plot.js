@@ -45,6 +45,11 @@
     function draw(el, inp, rg, unit, res, opt) {
         const msg = el.msg, sum = el.sum, svg = el.svg;
         const sweep = !!(opt && opt.sweep);
+        const src = (opt && opt.src) || srcState;
+        inp = withSource(inp, src);
+        const stabView = src.view === 'stab' && el.stab;
+        if (el.stab) { el.stab.hidden = !stabView; svg.style.display = stabView ? 'none' : ''; }
+        if (stabView) return drawStability(el, inp, res, unit);
         if (typeof FFEngine === 'undefined' || typeof FFEngine.acSweep !== 'function') {
             msg.textContent = 'engine に acSweep が無い';
             return false;
@@ -102,6 +107,12 @@
     }
 
     function csv(svg) {
+        const st = svg && svg._stab;
+        if (st && svg.style.display === 'none') {   // stability view: loop gain T(jw)
+            const L = st.loop, rows = [['f_Hz', 'T_dB', 'T_phase_deg']];
+            for (let i = 0; i < L.f.length; i++) rows.push([String(L.f[i]), String(L.T.dB[i]), String(L.T.phaseDeg[i])]);
+            return { text: '\uFEFF' + toCsv(rows), name: 'anthracite_loop_' + stamp(new Date()) + '.csv' };
+        }
         const b = svg && svg._bode;
         if (!b || !b.curves.length) return null;
         const f = b.curves[0].sw.f || [];
@@ -281,6 +292,208 @@
         return () => on;
     }
 
+    // ---------- signal source + view (shared by the dialog and every pop-out) ----------
+    // { source: 'r' | PICKUP_PRESETS key, vol: 0..10, tone: 0..10, view: 'bode' | 'stab' }
+    const SRC_KEY = 'ffop.bode.src';
+    const SRC_DEFAULT = { source: 'r', vol: 10, tone: 10, view: 'bode' };
+    let srcState = Object.assign({}, SRC_DEFAULT);
+    try { Object.assign(srcState, JSON.parse(localStorage.getItem(SRC_KEY) || '{}')); } catch (e) { /* ignore */ }
+    const srcListeners = [];
+    const srcCh = typeof BroadcastChannel === 'function' ? new BroadcastChannel('ffop') : null;
+    function setSrc(part, remote) {
+        const next = Object.assign({}, srcState, part);
+        if (JSON.stringify(next) === JSON.stringify(srcState)) return;
+        srcState = next;
+        if (!remote) {
+            try { localStorage.setItem(SRC_KEY, JSON.stringify(srcState)); } catch (e) { /* ignore */ }
+            if (srcCh) srcCh.postMessage({ type: 'src', state: srcState });
+        }
+        for (const f of srcListeners) f(srcState);
+    }
+    if (srcCh) srcCh.addEventListener('message', (e) => { if (e.data && e.data.type === 'src' && e.data.state) setSrc(e.data.state, true); });
+    window.addEventListener('storage', (e) => {
+        if (e.key === SRC_KEY && e.newValue) { try { setSrc(JSON.parse(e.newValue), true); } catch (x) { /* ignore */ } }
+    });
+
+    // inputs + chosen pickup preset (knob positions applied); R_in source = inputs unchanged
+    function withSource(inp, st) {
+        if (!st || st.source === 'r' || typeof FFEngine === 'undefined' || !FFEngine.PICKUP_PRESETS) return inp;
+        const pre = FFEngine.PICKUP_PRESETS[st.source];
+        if (!pre) return inp;
+        const s = JSON.parse(JSON.stringify(pre));
+        if (s.vol) s.vol.pos = st.vol;
+        if (s.tone) s.tone.pos = st.tone;
+        return Object.assign({}, inp, { source: s });
+    }
+
+    // wire the selector / knob fields / view toggle inside `root`; onChange() after every change
+    function bindSource(root, onChange) {
+        const q = (id) => root.querySelector('#' + id);
+        const sel = q('bsrc'), vol = q('bvol'), tone = q('btone'), knobs = q('bknobs'), view = q('bview');
+        function paint(st) {
+            sel.value = st.source;
+            knobs.hidden = st.source === 'r';
+            if (document.activeElement !== vol) vol.value = String(st.vol);
+            if (document.activeElement !== tone) tone.value = String(st.tone);
+            view.setAttribute('aria-pressed', String(st.view === 'stab'));
+        }
+        const knob = (el, key) => {
+            const v = Number(el.value);
+            const ok = el.value.trim() !== '' && isFinite(v) && v >= 0 && v <= 10;
+            el.classList.toggle('bad', !ok);
+            if (ok) setSrc({ [key]: v });
+        };
+        sel.addEventListener('change', () => setSrc({ source: sel.value }));
+        vol.addEventListener('change', () => knob(vol, 'vol'));
+        tone.addEventListener('change', () => knob(tone, 'tone'));
+        for (const [el, key] of [[vol, 'vol'], [tone, 'tone']]) {
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); knob(el, key); }
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey) {
+                    e.preventDefault(); e.stopPropagation();
+                    const v = Math.min(10, Math.max(0, Math.round((Number(el.value) || 0) + (e.key === 'ArrowUp' ? 1 : -1))));
+                    el.value = String(v); el.classList.remove('dirty'); knob(el, key);
+                }
+            });
+        }
+        view.addEventListener('click', () => setSrc({ view: srcState.view === 'stab' ? 'bode' : 'stab' }));
+        root.addEventListener('keydown', (e) => {
+            if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyT' || e.key === 't' || e.key === 'T')) {
+                e.preventDefault();
+                setSrc({ view: srcState.view === 'stab' ? 'bode' : 'stab' });
+            }
+        });
+        srcListeners.push((st) => { paint(st); onChange(st); });
+        paint(srcState);
+        return () => srcState;
+    }
+
+    // ---------- stability view ----------
+    function fmtF(v) { return v > 0 && isFinite(v) ? formatSI(v, 'Hz', 3) : '–'; }
+
+    function drawStability(el, inp, res, unit) {
+        const box = el.stab, msg = el.msg, sum = el.sum;
+        let st;
+        try {
+            if (!res) res = FFEngine.evaluate(inp);
+            st = FFEngine.stability(res, inp, { n: 240, nLoop: 300 });
+        } catch (e) {
+            msg.textContent = e && e.message ? e.message : String(e);
+            box.classList.add('stale');
+            return false;
+        }
+        box.classList.remove('stale');
+        msg.textContent = '';
+        const L = st.loop;
+        const pm = L.pm.map((m) => '<dt>PM</dt><dd>' + m.deg.toFixed(1) + '° @ ' + fmtF(m.f) + '</dd>').join('');
+        const gm = L.gm.map((m) => '<dt>GM</dt><dd>' + m.dB.toFixed(1) + ' dB @ ' + fmtF(m.f) + '</dd>').join('');
+        sum.innerHTML = '<dl>' + (pm || '<dt>PM</dt><dd>— (|T| &lt; 0 dB)</dd>') + gm + '</dl>';
+        // least-damped pole: the complex pole with the smallest ζ (zetaMin), else the dominant one
+        const cplx = (st.poles || []).filter((q) => q.f > 0);
+        let lp = null;
+        if (cplx.length) lp = cplx.reduce((a, q) => (q.zeta < a.zeta ? q : a));
+        else if (st.dominant) lp = st.dominant;
+        const sig = (v) => (v < 0 ? '−' : '') + Number(Math.abs(v).toPrecision(3));
+        const poleTxt = !lp ? 'least-damped pole: — (none found near the jω axis)'
+            : lp.f > 0 ? 'least-damped pole: ' + fmtF(lp.f) + ', ζ ' + sig(lp.zeta)
+            : 'least-damped pole: real, σ ' + sig(lp.sigma) + ' s⁻¹';
+        box.innerHTML =
+            '<div class="verdict' + (st.stable ? '' : ' bad') + '">' +
+            (st.stable ? 'stable' : 'unstable: ' + st.nRhp + ' RHP pole' + (st.nRhp > 1 ? 's' : '')) +
+            ' <span>· ' + poleTxt + '</span></div>' +
+            (st.warnings && st.warnings.length ? '<ul class="warn">' + st.warnings.map((w) => '<li>' + String(w).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</li>').join('') + '</ul>' : '') +
+            '<div class="bstab-plots"><svg class="tplot" role="img" aria-label="loop gain T"></svg>' +
+            '<svg class="nplot" role="img" aria-label="Nyquist plot of the return difference F"></svg></div>';
+        const tsvg = box.querySelector('.tplot'), nsvg = box.querySelector('.nplot');
+        plotLoop(tsvg, L);
+        plotNyquist(nsvg, st.nyquist);
+        el.svg._stab = st;
+        return true;
+    }
+
+    function plotLoop(svg, L) {
+        const box = svg.getBoundingClientRect();
+        const W = Math.max(260, Math.round(box.width)), H = Math.max(180, Math.round(box.height));
+        svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        const Lm = 46, R = 22, T = 8, B = 24, GAP = 14;
+        const hTop = Math.round((H - T - B - GAP) * 0.55);
+        const top = { y0: T, y1: T + hTop }, bot = { y0: T + hTop + GAP, y1: H - B };
+        const f = L.f, dB = L.T.dB, ph = L.T.phaseDeg;
+        const lx0 = Math.log10(f[0]), lx1 = Math.log10(f[f.length - 1]);
+        const X = (v) => Lm + (Math.log10(v) - lx0) / (lx1 - lx0) * (W - Lm - R);
+        const fin = (a) => a.filter((v) => isFinite(v));
+        let dmax = Math.ceil(Math.max.apply(null, fin(dB).concat([10])) / 20) * 20;
+        let dmin = Math.floor(Math.min.apply(null, fin(dB).concat([-20])) / 20) * 20;
+        dmin = Math.max(dmin, dmax - 160);
+        let pmax = Math.ceil(Math.max.apply(null, fin(ph).concat([0])) / 90) * 90;
+        let pmin = Math.floor(Math.min.apply(null, fin(ph).concat([-180])) / 90) * 90;
+        const Yd = (v) => top.y0 + (dmax - Math.min(Math.max(v, dmin), dmax)) / (dmax - dmin) * (top.y1 - top.y0);
+        const Yp = (v) => bot.y0 + (pmax - Math.min(Math.max(v, pmin), pmax)) / (pmax - pmin) * (bot.y1 - bot.y0);
+        let s = '';
+        for (let d = Math.ceil(lx0); d <= Math.floor(lx1); d++) {
+            const x = X(Math.pow(10, d)).toFixed(1);
+            s += '<line class="g" x1="' + x + '" y1="' + top.y0 + '" x2="' + x + '" y2="' + top.y1 + '"/><line class="g" x1="' + x + '" y1="' + bot.y0 + '" x2="' + x + '" y2="' + bot.y1 + '"/>';
+            if ((d - Math.ceil(lx0)) % 2 === 0) s += '<text class="t" x="' + x + '" y="' + (H - 8) + '" text-anchor="middle">' + formatSI(Math.pow(10, d), 'Hz', 1) + '</text>';
+        }
+        const dstep = niceStepDb(dmax - dmin);
+        for (let v = dmin; v <= dmax + 1e-9; v += dstep) {
+            const y = Yd(v).toFixed(1);
+            s += '<line class="g" x1="' + Lm + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '"/><text class="t" x="' + (Lm - 5) + '" y="' + (+y + 4) + '" text-anchor="end">' + v + '</text>';
+        }
+        for (let v = pmin; v <= pmax + 1e-9; v += 90) {
+            const y = Yp(v).toFixed(1);
+            s += '<line class="g" x1="' + Lm + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '"/><text class="t" x="' + (Lm - 5) + '" y="' + (+y + 4) + '" text-anchor="end">' + v + '°</text>';
+        }
+        // references: 0 dB and every -180 + k*360 deg inside the range
+        s += '<line class="ref" x1="' + Lm + '" y1="' + Yd(0).toFixed(1) + '" x2="' + (W - R) + '" y2="' + Yd(0).toFixed(1) + '"/>';
+        for (let v = -180 + 360 * Math.ceil((pmin + 180) / 360); v <= pmax; v += 360) {
+            s += '<line class="ref" x1="' + Lm + '" y1="' + Yp(v).toFixed(1) + '" x2="' + (W - R) + '" y2="' + Yp(v).toFixed(1) + '"/>';
+        }
+        s += '<rect class="ax" x="' + Lm + '" y="' + top.y0 + '" width="' + (W - Lm - R) + '" height="' + (top.y1 - top.y0) + '"/>';
+        s += '<rect class="ax" x="' + Lm + '" y="' + bot.y0 + '" width="' + (W - Lm - R) + '" height="' + (bot.y1 - bot.y0) + '"/>';
+        s += '<text class="t" x="' + (Lm + 5) + '" y="' + (top.y0 + 13) + '">|T| dB</text><text class="t" x="' + (Lm + 5) + '" y="' + (bot.y0 + 13) + '">∠T</text>';
+        const path = (ys, Y) => { let d = ''; for (let i = 0; i < f.length; i++) if (isFinite(ys[i])) d += (d ? 'L' : 'M') + X(f[i]).toFixed(1) + ',' + Y(ys[i]).toFixed(1); return d; };
+        s += '<path class="l" d="' + path(dB, Yd) + '"/><path class="l" d="' + path(ph, Yp) + '"/>';
+        // PM at the 0 dB crossovers, GM at the -180 deg crossings
+        // labels stacked one line apart so close crossings stay readable
+        L.pm.forEach((m, i) => {
+            const x = X(m.f).toFixed(1);
+            s += '<line class="mk" x1="' + x + '" y1="' + top.y0 + '" x2="' + x + '" y2="' + bot.y1 + '"/>';
+            s += '<text class="mt" x="' + (+x + 3) + '" y="' + (bot.y0 + 12 + 11 * i) + '">PM ' + m.deg.toFixed(0) + '°</text>';
+        });
+        L.gm.forEach((m, i) => {
+            const x = X(m.f).toFixed(1);
+            s += '<line class="mk" x1="' + x + '" y1="' + top.y0 + '" x2="' + x + '" y2="' + bot.y1 + '"/>';
+            s += '<text class="mt" x="' + (+x + 3) + '" y="' + (top.y1 - 6 - 11 * i) + '">GM ' + m.dB.toFixed(0) + ' dB</text>';
+        });
+        svg.innerHTML = s;
+    }
+
+    function niceStepDb(span) { for (const s of [10, 20, 40, 50, 100]) if (span / s <= 6) return s; return 100; }
+
+    // Nyquist of F(jw) (w > 0 solid, w < 0 = conjugate, faint); radius log-compressed r' = log10(1 + |F|)
+    function plotNyquist(svg, nq) {
+        const box = svg.getBoundingClientRect();
+        const W = Math.max(180, Math.round(box.width)), H = Math.max(180, Math.round(box.height));
+        svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        const comp = (re, im) => { const r = Math.hypot(re, im); if (!(r > 0)) return [0, 0]; const k = Math.log10(1 + r) / r; return [re * k, im * k]; };
+        const P = nq.re.map((re, i) => comp(re, nq.im[i]));
+        let m = 0.5;
+        for (const [x, y] of P) if (isFinite(x) && isFinite(y)) m = Math.max(m, Math.abs(x), Math.abs(y));
+        m *= 1.08;
+        const S = Math.min(W, H) / 2 - 10, cx = W / 2, cy = H / 2;
+        const X = (x) => cx + x / m * S, Y = (y) => cy - y / m * S;
+        let s = '<line class="g" x1="' + (cx - S) + '" y1="' + cy + '" x2="' + (cx + S) + '" y2="' + cy + '"/>' +
+            '<line class="g" x1="' + cx + '" y1="' + (cy - S) + '" x2="' + cx + '" y2="' + (cy + S) + '"/>';
+        // |F| = 1 circle (compressed radius log10 2) for scale
+        s += '<circle class="ref" cx="' + cx + '" cy="' + cy + '" r="' + (Math.log10(2) / m * S).toFixed(1) + '" fill="none"/>';
+        const path = (sign) => { let d = ''; for (const [x, y] of P) if (isFinite(x) && isFinite(y)) d += (d ? 'L' : 'M') + X(x).toFixed(1) + ',' + Y(sign * y).toFixed(1); return d; };
+        s += '<path class="lc" d="' + path(-1) + '"/><path class="l" d="' + path(1) + '"/>';
+        s += '<path class="org" d="M' + (cx - 5) + ',' + cy + 'L' + (cx + 5) + ',' + cy + 'M' + cx + ',' + (cy - 5) + 'L' + cx + ',' + (cy + 5) + '"/>';
+        s += '<text class="t" x="' + (cx - S + 2) + '" y="' + (cy - S + 11) + '">F(jω), log|F|</text>';
+        svg.innerHTML = s;
+    }
+
     // JSON with Infinity / NaN preserved (for localStorage)
     function toJSON(o) {
         return JSON.stringify(o, (k, v) => (typeof v === 'number' && !isFinite(v) ? { $num: String(v) } : v));
@@ -291,6 +504,7 @@
 
     root.FFBode = {
         draw: draw, range: range, sweepToggle: sweepToggle, toJSON: toJSON, fromJSON: fromJSON, csv: csv, exportCsv: exportCsv,
+        bindSource: bindSource, getSrc: () => Object.assign({}, srcState), setSrc: setSrc,
         RV1_SWEEP: RV1_SWEEP, CHANNEL: 'ffop', STATE_KEY: 'ffop.bode.state',
     };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

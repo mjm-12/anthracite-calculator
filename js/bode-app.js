@@ -3,11 +3,12 @@
     'use strict';
 
     const $ = (id) => document.getElementById(id);
-    const el = { svg: $('bplot'), sum: $('bsum'), msg: $('bmsg') };
+    const el = { svg: $('bplot'), sum: $('bsum'), msg: $('bmsg'), stab: $('bstab') };
     const RANGE_KEY = 'ffop.bode.range';
     let state = null;   // { inp, gainUnit, range }
     let timer = null;
     const sweep = FFBode.sweepToggle($('bsweep'), document, () => schedule(0));
+    FFBode.bindSource(document, () => schedule(0));
 
     function redraw() {
         if (!state) { el.msg.textContent = '計算機ページからの入力待ち'; return; }
