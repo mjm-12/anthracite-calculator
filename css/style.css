@@ -504,19 +504,19 @@ textarea.wrongtype { border-color: var(--accent); }
 .bstab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
 .bstab[hidden] { display: none; }
 .bstab.stale { opacity: 0.35; }
-.bstab .verdict { font-weight: 600; }
-.bstab .verdict.bad { color: var(--accent); }
-.bstab .verdict span { font-weight: 400; color: var(--mute); font-size: 11px; }
-.bstab-plots { flex: 1; min-height: 0; display: flex; gap: 10px; }
-.bstab-plots .tplot { flex: 3; min-width: 0; height: 100%; }
-.bstab-plots .nplot { flex: 2; min-width: 0; height: 100%; }
+.bstab .zhead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.bstab .zstate { font-weight: 600; font-size: 13px; }
+.bstab .zval { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bstab .zval span { font-size: 13px; font-weight: 400; color: var(--mute); }
+.bstab .zrhp { font-size: 11px; color: var(--mute); }
+.bstab .zhead.unstable .zstate, .bstab .zhead.unstable .zval,
+.bstab .zhead.marginal .zstate, .bstab .zhead.marginal .zval { color: var(--accent); }
+.bstab-plots { flex: 1; min-height: 0; display: flex; }
+.bstab-plots .tplot { flex: 1; min-width: 0; height: 100%; }
 .bstab svg .g { stroke: var(--rule); stroke-width: 1; }
 .bstab svg .ax { stroke: var(--mute); stroke-width: 1; fill: none; }
 .bstab svg .t { fill: var(--mute); font-size: 10px; font-family: inherit; }
 .bstab svg .l { fill: none; stroke: var(--accent); stroke-width: 1.6; }
-.bstab svg .lc { fill: none; stroke: color-mix(in srgb, var(--accent) 35%, white); stroke-width: 1; stroke-dasharray: 3 3; }
 .bstab svg .ref { stroke: var(--mute); stroke-width: 1; stroke-dasharray: 5 4; fill: none; }
 .bstab svg .mk { stroke: var(--fg); stroke-width: 1; stroke-dasharray: 4 3; }
 .bstab svg .mt { fill: var(--fg); font-size: 10px; font-family: inherit; }
-.bstab svg .org { stroke: var(--fg); stroke-width: 1.5; }
-@media (max-width: 700px) { .bstab-plots { flex-direction: column; } }

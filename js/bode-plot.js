@@ -369,6 +369,7 @@
     }
 
     // ---------- stability view ----------
+    const ZETA_LIGHT = 0.1;   // ζ below this: lightly damped (ringing / oscillation risk)
     function fmtF(v) { return v > 0 && isFinite(v) ? formatSI(v, 'Hz', 3) : '–'; }
 
     function drawStability(el, inp, res, unit) {
@@ -388,25 +389,30 @@
         const pm = L.pm.map((m) => '<dt>PM</dt><dd>' + m.deg.toFixed(1) + '° @ ' + fmtF(m.f) + '</dd>').join('');
         const gm = L.gm.map((m) => '<dt>GM</dt><dd>' + m.dB.toFixed(1) + ' dB @ ' + fmtF(m.f) + '</dd>').join('');
         sum.innerHTML = '<dl>' + (pm || '<dt>PM</dt><dd>— (|T| &lt; 0 dB)</dd>') + gm + '</dl>';
-        // least-damped pole: the complex pole with the smallest ζ (zetaMin), else the dominant one
-        const cplx = (st.poles || []).filter((q) => q.f > 0);
-        let lp = null;
-        if (cplx.length) lp = cplx.reduce((a, q) => (q.zeta < a.zeta ? q : a));
-        else if (st.dominant) lp = st.dominant;
+        // Headline: ζ_min (least-damped complex pole); a real dominant pole shows σ instead.
+        // State: ζ < 0 unstable, 0 <= ζ < ZETA_LIGHT marginal, else stable; RHP count is secondary.
+        const lp = st.leastDamped || st.rightmostReal || null;
         const sig = (v) => (v < 0 ? '−' : '') + Number(Math.abs(v).toPrecision(3));
-        const poleTxt = !lp ? 'least-damped pole: — (none found near the jω axis)'
-            : lp.f > 0 ? 'least-damped pole: ' + fmtF(lp.f) + ', ζ ' + sig(lp.zeta)
-            : 'least-damped pole: real, σ ' + sig(lp.sigma) + ' s⁻¹';
+        let state, head;
+        if (lp && lp.f > 0) {
+            state = lp.zeta < 0 ? 'unstable' : lp.zeta < ZETA_LIGHT ? 'marginal' : 'stable';
+            head = 'ζ<sub>min</sub> ' + sig(lp.zeta) + ' <span>@ ' + fmtF(lp.f) + '</span>';
+        } else if (lp) {
+            state = lp.sigma > 0 ? 'unstable' : 'stable';
+            head = 'real pole σ ' + sig(lp.sigma) + ' <span>s⁻¹</span>';
+        } else {
+            state = st.stable ? 'stable' : 'unstable';
+            head = 'ζ<sub>min</sub> — <span>(no lightly damped pole)</span>';
+        }
+        if (st.nRhp > 0) state = 'unstable';
+        const rhp = st.nRhp + ' RHP pole' + (st.nRhp === 1 ? '' : 's');
         box.innerHTML =
-            '<div class="verdict' + (st.stable ? '' : ' bad') + '">' +
-            (st.stable ? 'stable' : 'unstable: ' + st.nRhp + ' RHP pole' + (st.nRhp > 1 ? 's' : '')) +
-            ' <span>· ' + poleTxt + '</span></div>' +
+            '<div class="zhead ' + state + '" title="ζ < ' + ZETA_LIGHT + ': lightly damped, risk of ringing/oscillation">' +
+            '<span class="zstate">' + state + '</span><span class="zval">' + head + '</span>' +
+            '<span class="zrhp">' + rhp + '</span></div>' +
             (st.warnings && st.warnings.length ? '<ul class="warn">' + st.warnings.map((w) => '<li>' + String(w).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</li>').join('') + '</ul>' : '') +
-            '<div class="bstab-plots"><svg class="tplot" role="img" aria-label="loop gain T"></svg>' +
-            '<svg class="nplot" role="img" aria-label="Nyquist plot of the return difference F"></svg></div>';
-        const tsvg = box.querySelector('.tplot'), nsvg = box.querySelector('.nplot');
-        plotLoop(tsvg, L);
-        plotNyquist(nsvg, st.nyquist);
+            '<div class="bstab-plots"><svg class="tplot" role="img" aria-label="loop gain T"></svg></div>';
+        plotLoop(box.querySelector('.tplot'), L);
         el.svg._stab = st;
         return true;
     }
@@ -470,29 +476,6 @@
     }
 
     function niceStepDb(span) { for (const s of [10, 20, 40, 50, 100]) if (span / s <= 6) return s; return 100; }
-
-    // Nyquist of F(jw) (w > 0 solid, w < 0 = conjugate, faint); radius log-compressed r' = log10(1 + |F|)
-    function plotNyquist(svg, nq) {
-        const box = svg.getBoundingClientRect();
-        const W = Math.max(180, Math.round(box.width)), H = Math.max(180, Math.round(box.height));
-        svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-        const comp = (re, im) => { const r = Math.hypot(re, im); if (!(r > 0)) return [0, 0]; const k = Math.log10(1 + r) / r; return [re * k, im * k]; };
-        const P = nq.re.map((re, i) => comp(re, nq.im[i]));
-        let m = 0.5;
-        for (const [x, y] of P) if (isFinite(x) && isFinite(y)) m = Math.max(m, Math.abs(x), Math.abs(y));
-        m *= 1.08;
-        const S = Math.min(W, H) / 2 - 10, cx = W / 2, cy = H / 2;
-        const X = (x) => cx + x / m * S, Y = (y) => cy - y / m * S;
-        let s = '<line class="g" x1="' + (cx - S) + '" y1="' + cy + '" x2="' + (cx + S) + '" y2="' + cy + '"/>' +
-            '<line class="g" x1="' + cx + '" y1="' + (cy - S) + '" x2="' + cx + '" y2="' + (cy + S) + '"/>';
-        // |F| = 1 circle (compressed radius log10 2) for scale
-        s += '<circle class="ref" cx="' + cx + '" cy="' + cy + '" r="' + (Math.log10(2) / m * S).toFixed(1) + '" fill="none"/>';
-        const path = (sign) => { let d = ''; for (const [x, y] of P) if (isFinite(x) && isFinite(y)) d += (d ? 'L' : 'M') + X(x).toFixed(1) + ',' + Y(sign * y).toFixed(1); return d; };
-        s += '<path class="lc" d="' + path(-1) + '"/><path class="l" d="' + path(1) + '"/>';
-        s += '<path class="org" d="M' + (cx - 5) + ',' + cy + 'L' + (cx + 5) + ',' + cy + 'M' + cx + ',' + (cy - 5) + 'L' + cx + ',' + (cy + 5) + '"/>';
-        s += '<text class="t" x="' + (cx - S + 2) + '" y="' + (cy - S + 11) + '">F(jω), log|F|</text>';
-        svg.innerHTML = s;
-    }
 
     // JSON with Infinity / NaN preserved (for localStorage)
     function toJSON(o) {

@@ -150,9 +150,10 @@ section('3. Default Anthracite circuit: verdicts');
         check(Math.abs(st.F0[1]) < 1e-2 * Math.abs(st.F0[0]) && st.F0[0] > 0, name + ' F(0+) real positive');
         check(Math.abs(st.Finf[0] - 1) < 0.01 && Math.abs(st.Finf[1]) < 0.01, name + ' F(j inf) -> 1');
         const pm = st.loop.pm.map(q => q.f.toFixed(0) + ' Hz ' + q.deg.toFixed(1) + '°').join(', ');
-        const d = st.dominant;
-        console.log('  ' + name + ': stable, nRhp 0; R_F loop PM ' + (pm || 'no crossover') + '; least-stable pole ' +
-            (d ? (d.f > 0 ? d.f.toFixed(0) + ' Hz, ' : 'real, ') + 'σ ' + d.sigma.toFixed(0) + ' /s, ζ ' + d.zeta.toFixed(2) : '-'));
+        const d = st.leastDamped, rr = st.rightmostReal;
+        console.log('  ' + name + ': stable, nRhp 0; R_F loop PM ' + (pm || 'no crossover') + '; least-damped complex pole ' +
+            (d ? d.f.toFixed(0) + ' Hz, σ ' + d.sigma.toFixed(0) + ' /s, ζ ' + d.zeta.toFixed(2) : 'なし') +
+            '; rightmost real pole σ ' + (rr ? rr.sigma.toFixed(1) + ' /s' : '-'));
     }
 }
 
@@ -188,8 +189,8 @@ section('4. LTspice reference (full .model, VT 25.8648 mV, 57 Classic / Texas Sp
         });
         const st = E.stability(r, inp);
         if (LT.modes[k]) {
-            const m = LT.modes[k], d = st.dominant;
-            check(d && relErr(d.f, m.f) < 1e-3 && relErr(d.sigma, m.sigma) < 1e-2, k + ' dominant pole ' + JSON.stringify(d) + ' vs LTspice ' + JSON.stringify(m));
+            const m = LT.modes[k], d = st.leastDamped;
+            check(d && relErr(d.f, m.f) < 1e-3 && relErr(d.sigma, m.sigma) < 1e-2, k + ' least-damped pole ' + JSON.stringify(d) + ' vs LTspice ' + JSON.stringify(m));
             check((st.nRhp > 0) === (m.sigma > 0), k + ' verdict: nRhp ' + st.nRhp + ', LTspice transient ' + (m.sigma > 0 ? 'grows' : 'decays'));
             console.log('  ' + k + ': ' + (st.stable ? '安定' : '不安定 (右半面 ' + st.nRhp + ')') + ', engine ' + d.f.toFixed(1) + ' Hz σ ' + d.sigma.toFixed(0) +
                 ' /s | LTspice tran ' + m.f.toFixed(1) + ' Hz σ ' + m.sigma.toFixed(0) + ' /s');
@@ -260,7 +261,7 @@ section('6. Large C_BC2: low-frequency oscillation of the R_F bias loop (source 
     const d0 = E.evaluate(BASE);
     for (const cbc2 of [3e-9, 10e-9, 100e-9]) {
         const inp = Object.assign({}, BASE, { Cbc2: cbc2, Vt: 25.8648e-3 });
-        const st = E.stability(inp), m = LTLF[String(cbc2)], d = st.dominant;
+        const st = E.stability(inp), m = LTLF[String(cbc2)], d = st.leastDamped;
         check(st.result.Ic2 === E.evaluate(Object.assign({}, BASE, { Vt: 25.8648e-3 })).Ic2, 'C_BC2 ' + cbc2 + ': DC unchanged');
         check((st.nRhp > 0) === (m.sigma > 0), 'C_BC2 ' + cbc2 + ': verdict nRhp ' + st.nRhp + ' vs LTspice ' + (m.sigma > 0 ? 'grows' : 'decays'));
         check(relErr(d.f, m.f) < 1e-3 && relErr(d.sigma, m.sigma) < (m.sigTol || 1e-2), 'C_BC2 ' + cbc2 + ': pole ' + d.f + ' Hz, ' + d.sigma + ' /s vs LTspice ' + m.f + ', ' + m.sigma);
@@ -273,6 +274,47 @@ section('6. Large C_BC2: low-frequency oscillation of the R_F bias loop (source 
     check(E.stability(Object.assign({}, BASE, { Cbc2: 10e-9, Cin: Infinity })).nRhp === 0, '10 nF with C_in shorted (one lag fewer): stable');
     check(E.stability(Object.assign({}, BASE, { Cbc2: 100e-9, RV1: 100 })).nRhp === 2, '100 nF, RV1 100 Ω: unstable');
     check(d0.Ic2 > 0 && E.stability(BASE).nRhp === 0, 'default 47 pF: stable');
+}
+
+// ---------------------------------------------------------------
+section('7. Pole search: independent of the sweep densities, complete in the band');
+{
+    // Seeds are a fixed log grid over the loop band (Muller from w(-0.3+j), w(-0.03+j), -w)
+    // plus a sign scan of det Y on the negative real axis; nothing depends on n / nLoop.
+    const cases = [
+        ['R_in 1 kΩ', {}], ['Texas Special Neck', { source: P.texasSpecialNeck }],
+        ['57 Classic Neck', { source: P.gibson57ClassicNeck }], ['C_BC2 10 nF', { Cbc2: 10e-9 }],
+    ];
+    for (const [name, x] of cases) {
+        const inp = Object.assign({}, BASE, x), r = E.evaluate(inp);
+        const runs = [200, 240, 300, 400].map(n => { const t0 = Date.now(); const st = E.stability(r, inp, { n: n, nLoop: 300 }); return { st: st, ms: Date.now() - t0 }; });
+        const ref = runs[0].st.poles;
+        for (const { st } of runs.slice(1)) {
+            check(st.poles.length === ref.length && st.poles.every((q, i) => relErr(q.sigma, ref[i].sigma) < 1e-6 && (q.f === 0 ? ref[i].f === 0 : relErr(q.f, ref[i].f) < 1e-6)),
+                name + ': poles identical for n = 200 / 240 / 300 / 400');
+        }
+        check(runs.every(u => u.st.warnings.length === 0), name + ': no warnings (RHP roots found = nRhp)');
+        const nR = ref.reduce((n, q) => n + (q.sigma > 0 ? (q.f > 0 ? 2 : 1) : 0), 0);
+        check(nR === runs[0].st.nRhp, name + ': RHP roots ' + nR + ' = nRhp ' + runs[0].st.nRhp);
+        const ms = Math.max(...runs.map(u => u.ms));
+        check(ms < 400, name + ': runtime ' + ms + ' ms');
+        console.log('  ' + name + ': ' + ref.map(q => (q.f > 0 ? q.f.toFixed(1) + ' Hz ' : '実 ') + 'σ ' + q.sigma.toPrecision(5)).join(', ') + ' (' + ms + ' ms)');
+    }
+    // Default R_in circuit, real poles. LTspice .tran (plotwinsize=0), matrix-pencil fits:
+    //   kick into B1, V(c2): -1661 ... -1676 /s and -8215 ... -8227 /s (large amplitude)
+    //   kick into the R_in/C_in node, V(k): slow real mode -170 ... -183 /s (small amplitude)
+    // The slowest pole (-180.8 /s, C_in with R_in and the low B1 impedance) is weakly
+    // excited from B1, which is why an |F|-minimum search only found -1672 /s before.
+    const st = E.stability(BASE);
+    const re = st.poles.filter(q => q.f === 0).map(q => q.sigma);
+    check(st.rightmostReal && Math.abs(st.rightmostReal.sigma + 180.78) < 0.5, 'rightmost real pole ' + (st.rightmostReal && st.rightmostReal.sigma));
+    check(re.some(v => Math.abs(v + 1672) / 1672 < 0.01), 'real pole -1672 /s (LTspice -1661 ... -1676)');
+    check(re.some(v => Math.abs(v + 8225) / 8225 < 0.005), 'real pole -8225 /s (LTspice -8215 ... -8227)');
+    check(re[0] < -170 && re[0] > -190, 'slowest real pole within the LTspice range -170 ... -190 /s');
+    check(st.leastDamped === null && st.zetaMin === Infinity, 'no complex pole in the band');
+    // tone-network poles next to a pole of F are found (pickup presets)
+    const g = E.stability(Object.assign({}, BASE, { source: P.gibson57ClassicNeck }));
+    check(g.poles.some(q => q.f === 0 && Math.abs(q.sigma + 91.44) < 0.1), '57 Classic: tone-network pole near -1/(500k·22n)');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

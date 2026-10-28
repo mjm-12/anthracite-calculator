@@ -959,7 +959,7 @@
         net.RC = (a, b, R, C) => {
             if (R === Infinity || !(C > 0)) return;
             if (C === Infinity) { net.R(a, b, R); return; }
-            net.el.push({ t: 'Y', a, b, f: (s) => cx.div([1, 0], cx.add([R, 0], cx.div([1, 0], [s[0] * C, s[1] * C]))) });
+            net.el.push({ t: 'Y', a, b, rc: [R, C], f: (s) => cx.div([1, 0], cx.add([R, 0], cx.div([1, 0], [s[0] * C, s[1] * C]))) });
         };
         net.VCCS = (op, on, cp, cn, g, active) => net.el.push({ t: 'VCCS', op, on, cp, cn, g, active: !!active });
         net.V = (a, b, val) => { const k = net.nv++; net.el.push({ t: 'V', a, b, k, val }); return k; };
@@ -1300,18 +1300,18 @@
     // ---------------------------------------------------------------
     const wrapPi = (x) => { while (x > Math.PI) x -= 2 * Math.PI; while (x <= -Math.PI) x += 2 * Math.PI; return x; };
 
-    function Fratio(p, s) {
-        const net = buildNet(p, { src: 0 });
+    function Fratio(p, s, netNull) {
+        const net = netNull || buildNet(p, { src: 0 });
         const a = mnaDet(net, s), b = mnaDet(net, s, { passive: true });
         const la = a.logAbs - b.logAbs, ph = wrapPi(a.arg - b.arg);
         return { la: la, ph: ph, v: [Math.exp(la) * Math.cos(ph), Math.exp(la) * Math.sin(ph)] };
     }
 
-    function tianT(p, s) {
-        const nv = buildNet(p, { src: 0, tian: 'v' });
+    function tianT(p, s, nets) {
+        const nv = nets ? nets.v : buildNet(p, { src: 0, tian: 'v' });
         const xv = mnaSolve(nv, s);
         const Tv = cx.div(xv(nv.names.E2), xv(nv.names.X)); Tv[0] = -Tv[0]; Tv[1] = -Tv[1];
-        const ni = buildNet(p, { src: 0, tian: 'i' });
+        const ni = nets ? nets.i : buildNet(p, { src: 0, tian: 'i' });
         const j = mnaSolve(ni, s)(ni.n + ni.tianV);        // current X -> E2 through the 0 V source
         const Ti = cx.div([1 + j[0], j[1]], [-j[0], -j[1]]);
         const num = cx.sub(cx.mul(Tv, Ti), [1, 0]);
@@ -1368,6 +1368,60 @@
         return null;
     }
 
+    // Closed-loop poles in the band |s| / 2pi in [fLo, fHi]: Muller on F(s) from a fixed
+    // set of seeds (independent of any frequency sweep): for f on a log grid
+    // (3 per decade) s = w(-0.3 + j), w(-0.03 + j) and -w. Real poles are also found by
+    // a sign-change scan of the real-valued F(sigma) on the negative real axis
+    // (12 points per decade) refined with Brent's method; sign changes at poles of F
+    // (zeros of det Y0) are rejected by the |F| test. A root is kept when
+    // |F(root)| < 1e-7 (F ~ 1 away from the poles); conjugates and duplicates are merged.
+    function findPoles(g, fLo, fHi, realSign) {
+        const roots = [];
+        const nDec = Math.log10(fHi / fLo);
+        const K = Math.max(1, Math.ceil(3 * nDec));
+        const add = (root) => {
+            if (!root) return;
+            const m = cx.abs(root);
+            if (!(m > 0) || !isFinite(m)) return;
+            if (m < 2 * Math.PI * fLo || m > 2 * Math.PI * fHi) return;
+            if (!(cx.abs(g(root)) < 1e-7)) return;
+            const r = [root[0], Math.abs(root[1]) < 1e-9 * m ? 0 : Math.abs(root[1])];
+            if (roots.some(q => cx.abs(cx.sub(q, r)) < 1e-6 * m)) return;
+            roots.push(r);
+        };
+        // Real axis: sign of det Y(-w) times the series-RC factors (1 - w R C) changes only
+        // at zeros of det Y (inductors only add 1/s factors, constant in sign for s < 0).
+        // 24 points per decade, bisection on each sign change, then the |F| test.
+        if (realSign) {
+            const KR = Math.max(2, Math.ceil(24 * nDec));
+            const u0 = Math.log(2 * Math.PI * fLo), u1 = Math.log(2 * Math.PI * fHi);
+            const sg = (u) => realSign(-Math.exp(u));
+            let ua = u0, sa = sg(ua);
+            for (let k = 1; k <= KR; k++) {
+                const ub = u0 + (u1 - u0) * k / KR, sb = sg(ub);
+                if (sa !== 0 && sb !== 0 && sa !== sb) {
+                    let lo = ua, hi = ub;
+                    for (let it = 0; it < 64 && hi - lo > 1e-15; it++) {
+                        const m = 0.5 * (lo + hi), sm = sg(m);
+                        if (sm === sa) lo = m; else hi = m;
+                    }
+                    add([-Math.exp(0.5 * (lo + hi)), 0]);
+                }
+                ua = ub; sa = sb;
+            }
+        }
+        for (let k = 0; k <= K; k++) {
+            const w = 2 * Math.PI * fLo * Math.pow(fHi / fLo, k / K);
+            for (const z of [0.3, 0.03]) {
+                const s0 = [-z * w, w];
+                add(muller(g, [s0[0] * 0.97, s0[1] * 0.97], [s0[0] * 1.03, s0[1] * 1.03], s0, 60));
+            }
+            add(muller(g, [-0.97 * w, 0], [-1.03 * w, 0], [-w, 0], 60));
+        }
+        roots.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+        return roots.map(r => ({ s: r, f: r[1] / (2 * Math.PI), sigma: r[0], zeta: r[1] === 0 ? Math.sign(-r[0]) : -r[0] / cx.abs(r) }));
+    }
+
     // stability(inputs, opts) or stability(result, inputs, opts)
     // opts: { fMin = 1e-3, fMax = 1e10, n = 300 (Nyquist grid, refined adaptively),
     //         loopFStart = 1, loopFStop = 1e8, nLoop = 400 }
@@ -1382,7 +1436,9 @@
         if (!(fMax > fMin)) throw new Error('fMin < fMax を満たさない');
 
         // (a) Nyquist of F
-        const gF = (f) => Fratio(p, [0, 2 * Math.PI * f]);
+        const netNull = buildNet(p, { src: 0 });
+        const tianNets = { v: buildNet(p, { src: 0, tian: 'v' }), i: buildNet(p, { src: 0, tian: 'i' }) };
+        const gF = (f) => Fratio(p, [0, 2 * Math.PI * f], netNull);
         const tr = trackPhase(gF, fMin, fMax, Math.max(20, Math.round(optDefault(opts.n, 300))));
         const pts = tr.pts, phU = tr.phU, last = pts.length - 1;
         const dPh = phU[last] - phU[0];
@@ -1395,23 +1451,20 @@
         const nyq = { f: [], re: [], im: [] };
         for (const q of pts) { nyq.f.push(q.f); nyq.re.push(q.val.v[0]); nyq.im.push(q.val.v[1]); }
 
-        // Closed-loop poles near the jw axis: Muller from the deepest local minima of |F|
-        const minima = [];
-        for (let i = 1; i < last; i++) if (pts[i].val.la < pts[i - 1].val.la && pts[i].val.la <= pts[i + 1].val.la) minima.push(i);
-        minima.sort((x, y) => pts[x].val.la - pts[y].val.la);
-        const gs = (s) => Fratio(p, s).v;
-        const poles = [];
-        for (const i of minima.slice(0, 4)) {
-            const w = 2 * Math.PI * pts[i].f;
-            const root = muller(gs, [-0.02 * w, 0.98 * w], [0.01 * w, 1.02 * w], [0, w], 200);
-            if (!root || !(root[1] > 0)) continue;
-            if (cx.abs(gs(root)) > 1e-6) continue;
-            if (poles.some(q => cx.abs(cx.sub(q.s, root)) < 1e-6 * cx.abs(root))) continue;
-            const real = Math.abs(root[1]) < 1e-9 * cx.abs(root);
-            poles.push({ s: root, f: real ? 0 : root[1] / (2 * Math.PI), sigma: root[0], zeta: real ? Math.sign(-root[0]) : -root[0] / cx.abs(root) });
-        }
-        poles.sort((x, y) => y.sigma - x.sigma);
-        if (nRhp > 0 && !poles.some(q => q.sigma > 0)) warnings.push('右半面の極の位置は求まらなかった (実軸上の極の可能性)');
+        // Closed-loop poles: grid-independent seeded search over the loop band
+        const pfLo = optDefault(opts.poleFMin, optDefault(opts.loopFStart, 1));
+        const pfHi = optDefault(opts.poleFMax, optDefault(opts.loopFStop, 1e8));
+        const rcEls = netNull.el.filter(e => e.rc);
+        const realSign = (sig) => {
+            const d = mnaDet(netNull, [sig, 0]);
+            if (!isFinite(d.logAbs)) return 0;
+            let sgn = Math.cos(d.arg) >= 0 ? 1 : -1;
+            for (const e of rcEls) if (1 + sig * e.rc[0] * e.rc[1] < 0) sgn = -sgn;
+            return sgn;
+        };
+        const poles = findPoles((s) => Fratio(p, s, netNull).v, pfLo, pfHi, realSign);
+        const nRhpFound = poles.reduce((n, q) => n + (q.sigma > 0 ? (q.f > 0 ? 2 : 1) : 0), 0);
+        if (nRhpFound !== nRhp) warnings.push('右半面の極を ' + nRhpFound + ' 個しか特定できなかった (偏角から ' + nRhp + ' 個)');
 
         // (b) Tian loop gain of the R_F loop
         const lf0 = optDefault(opts.loopFStart, 1), lf1 = optDefault(opts.loopFStop, 1e8), nl = Math.max(2, Math.round(optDefault(opts.nLoop, 400)));
@@ -1419,7 +1472,7 @@
         let prev = null;
         for (let i = 0; i < nl; i++) {
             const f = lf0 * Math.pow(lf1 / lf0, i / (nl - 1));
-            const T = tianT(p, [0, 2 * Math.PI * f]).T;
+            const T = tianT(p, [0, 2 * Math.PI * f], tianNets).T;
             let ph = Math.atan2(T[1], T[0]);
             if (prev !== null) ph = prev + wrapPi(ph - prev);
             prev = ph;
@@ -1445,12 +1498,15 @@
             stable: nRhp === 0, nRhp: nRhp,
             minAbsF: Math.exp(pts[iMin].val.la), fMinF: pts[iMin].f,
             F0: pts[0].val.v, Finf: pts[last].val.v,
-            // poles: closed-loop poles found from the deepest minima of |F(jw)|, sorted by
-            // real part (least stable first); f = Im(s)/2pi [Hz], sigma = Re(s) [1/s],
-            // zeta = -Re(s)/|s|. Real poles have f = 0. Not an exhaustive list.
+            // poles: closed-loop poles with |s|/2pi in poleBand (default: the loop band),
+            // sorted by real part (least stable first); f = Im(s)/2pi [Hz] (0 for real poles),
+            // sigma = Re(s) [1/s], zeta = -Re(s)/|s|. Independent of the sweep densities.
             poles: poles.map(q => ({ f: q.f, sigma: q.sigma, zeta: q.zeta })),
             dominant: poles.length ? { f: poles[0].f, sigma: poles[0].sigma, zeta: poles[0].zeta } : null,
             zetaMin: poles.filter(q => q.f > 0).reduce((m, q) => Math.min(m, q.zeta), Infinity),
+            leastDamped: (function () { const cpx = poles.filter(q => q.f > 0); if (!cpx.length) return null; const q = cpx.reduce((m, x) => (x.zeta < m.zeta ? x : m)); return { f: q.f, sigma: q.sigma, zeta: q.zeta }; })(),
+            rightmostReal: (function () { const re = poles.filter(q => q.f === 0); return re.length ? { f: 0, sigma: re[0].sigma, zeta: re[0].zeta } : null; })(),
+            poleBand: [pfLo, pfHi],
             nyquist: nyq,
             loop: { f: lf, T: { mag: mag, dB: dB, phaseDeg: phD }, pm: pm, gm: gm, crossover: pm.length > 0 },
             warnings: warnings,
@@ -1596,7 +1652,7 @@
         stability: stability,
         PICKUP_PRESETS: PICKUP_PRESETS,
         _newNet: newNet, _mnaDet: mnaDet, _mnaSolve: mnaSolve, _buildNet: buildNet, _acParams: acParams,
-        _trackPhase: trackPhase, _tianT: tianT, _Fratio: Fratio, _potFrac: potFrac,
+        _trackPhase: trackPhase, _findPoles: findPoles, _tianT: tianT, _Fratio: Fratio, _potFrac: potFrac,
         _acPoint: acPoint,
         kclResiduals: kclResiduals,
         // internal, exported for tests
