@@ -1,8 +1,8 @@
 # Anthracite Calc
 
-2 石の直結帰還型ファズ（Fuzz Face 系、NPN / PNP）の動作点、利得、周波数特性、安定性を SPICE モデルから計算するブラウザ用ツールである。Trope のファズペダル [Anthracite](https://github.com/trope-oshw/anthracite) の定数決定に使用したものを公開用に再構成。
+2 石の直結帰還型ファズ（Fuzz Face 系、NPN / PNP）の動作点、利得、周波数特性、安定性を SPICE モデルから計算するブラウザ用ツール。Trope のファズペダル [Anthracite](https://github.com/trope-oshw/anthracite) の定数決定に使用したものを公開用に再構成。
 
-<img src="schematic.svg" width="560">
+<img src="images/schematic.png" width="560">
 
 ## 使い方
 
